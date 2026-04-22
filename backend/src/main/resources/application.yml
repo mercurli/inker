@@ -1,0 +1,31 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: inker
+  datasource:
+    url: jdbc:mysql://192.168.3.90:3306/inker
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: xx123456
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          batch_size: 200
+        order_inserts: true
+        order_updates: true
+
+logging:
+  level:
+    org.hibernate.SQL: OFF
+    org.hibernate.orm.jdbc.bind: OFF
+
+tushare:
+  api-url: http://api.tushare.pro
+  token: d6844605f09300b40492795059319b90899761f5cc66a5fc775a82c4
