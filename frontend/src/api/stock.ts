@@ -1,9 +1,4 @@
-import axios from 'axios'
-
-const api = axios.create({
-  baseURL: 'http://localhost:8081/api/v1',
-  timeout: 30000
-})
+import http from '@/shared/api/http'
 
 export interface Stock {
   id: number
@@ -36,6 +31,18 @@ export interface StockDailyKLine {
   candles: StockDailyCandle[]
 }
 
+export interface WatchlistGroup {
+  id: number
+  name: string
+  default: boolean
+  sortOrder: number
+  stockCount: number
+}
+
+export interface WatchlistStock extends Stock {
+  addedAt: string
+}
+
 export interface StockQueryParams {
   keyword?: string
   exchangeCode?: 'SSE' | 'SZSE'
@@ -62,13 +69,31 @@ export interface ImportResult {
   skippedBeijingExchange: number
 }
 
-export const stockApi = {
-  getStocks: (params?: StockQueryParams) => api.get<PageResponse<Stock>>('/stocks', { params }),
-  getStock: (id: number) => api.get<Stock>(`/stocks/${id}`),
-  getDailyKLine: (id: number, limit = 60) => api.get<StockDailyKLine>(`/stocks/${id}/daily-k-line`, { params: { limit } }),
-  getIndustries: () => api.get<string[]>('/stocks/industries'),
-  importStocks: () => api.post<ImportResult>('/stocks/import', null, { timeout: 120000 }),
-  health: () => api.get('/health')
+export interface CreateWatchlistGroupRequest {
+  name: string
 }
 
-export default api
+export interface UpdateWatchlistGroupRequest {
+  name?: string
+  sortOrder?: number
+}
+
+export const stockApi = {
+  getStocks: (params?: StockQueryParams) => http.get<PageResponse<Stock>>('/stocks', { params }),
+  getStock: (id: number) => http.get<Stock>(`/stocks/${id}`),
+  getDailyKLine: (id: number, limit = 60) => http.get<StockDailyKLine>(`/stocks/${id}/daily-k-line`, { params: { limit } }),
+  getIndustries: () => http.get<string[]>('/stocks/industries'),
+  importStocks: () => http.post<ImportResult>('/stocks/import', null, { timeout: 120000 }),
+  health: () => http.get('/health'),
+
+  getWatchlistGroups: () => http.get<WatchlistGroup[]>('/watchlist/groups'),
+  createWatchlistGroup: (payload: CreateWatchlistGroupRequest) => http.post<WatchlistGroup>('/watchlist/groups', payload),
+  updateWatchlistGroup: (groupId: number, payload: UpdateWatchlistGroupRequest) => http.patch<WatchlistGroup>(`/watchlist/groups/${groupId}`, payload),
+  deleteWatchlistGroup: (groupId: number) => http.delete(`/watchlist/groups/${groupId}`),
+  getWatchlistGroupStocks: (groupId: number) => http.get<WatchlistStock[]>(`/watchlist/groups/${groupId}/stocks`),
+  ensureStockInDefaultGroup: (stockId: number) => http.post(`/watchlist/stocks/${stockId}/default`, null),
+  addStockToGroup: (groupId: number, stockId: number) => http.post(`/watchlist/groups/${groupId}/stocks/${stockId}`, null),
+  removeStockFromGroup: (groupId: number, stockId: number) => http.delete(`/watchlist/groups/${groupId}/stocks/${stockId}`),
+  unwatchStock: (stockId: number) => http.delete(`/watchlist/stocks/${stockId}`),
+  getWatchedStockIds: () => http.get<number[]>('/watchlist/stocks/ids')
+}

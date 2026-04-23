@@ -1,9 +1,10 @@
-import api from './stock'
+import type { TrendTone } from '@/shared/types/common'
+import http from '@/shared/api/http'
 
 export interface DistributionBucket {
   label: string
   count: number
-  tone: 'up' | 'down' | 'neutral'
+  tone: TrendTone
 }
 
 export interface MarketSummary {
@@ -22,5 +23,5 @@ export interface MarketSummary {
 }
 
 export const marketApi = {
-  getSummary: () => api.get<MarketSummary>('/stocks/summary')
+  getSummary: () => http.get<MarketSummary>('/stocks/summary')
 }

@@ -1,0 +1,87 @@
+:root {
+  /* Core colors */
+  --bg-page: #f3f5f8;
+  --bg-surface: #ffffff;
+  --bg-soft: #f8fafc;
+  --bg-muted: #f1f5f9;
+
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+
+  --border-default: #e5e7eb;
+  --border-soft: #eef2f6;
+  --border-strong: #d4d9e2;
+
+  --primary-50: #eff6ff;
+  --primary-500: #1d9bf0;
+  --primary-600: #0284e6;
+
+  --success-500: #16a34a;
+  --danger-500: #ef4444;
+
+  /* A-share semantic colors: up red, down green */
+  --up-500: #dc2626;
+  --up-soft: #fef2f2;
+  --down-500: #16a34a;
+  --down-soft: #f0fdf4;
+  --neutral-500: #64748b;
+  --neutral-soft: #f1f5f9;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Shadow */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-hover: 0 8px 24px rgba(16, 24, 40, 0.1);
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Typography */
+  --font-family-base: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 18px;
+  --font-size-xl: 40px;
+
+  --line-height-tight: 1.2;
+  --line-height-base: 1.5;
+
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Components */
+  --btn-height-sm: 30px;
+  --btn-height-md: 36px;
+  --btn-height-lg: 40px;
+
+  --transition-fast: 150ms ease;
+
+  /* Compatibility aliases for existing styles */
+  --color-bg: var(--bg-page);
+  --color-surface: var(--bg-surface);
+  --color-surface-soft: var(--bg-soft);
+  --color-border: var(--border-default);
+  --color-text: var(--text-primary);
+  --color-muted: var(--text-secondary);
+  --color-primary: var(--primary-500);
+  --color-primary-strong: var(--primary-600);
+  --color-up: var(--up-500);
+  --color-up-soft: var(--up-soft);
+  --color-down: var(--down-500);
+  --color-down-soft: var(--down-soft);
+  --color-neutral: var(--neutral-500);
+  --color-neutral-soft: var(--neutral-soft);
+}
