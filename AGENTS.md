@@ -100,7 +100,7 @@ npm run test -- --watch
 ```css
 :root {
   /* Colors */
-  --bg-page: #f3f5f8;
+  --bg-page: #ffffff;
   --bg-surface: #ffffff;
   --bg-soft: #f8fafc;
   --text-primary: #111827;

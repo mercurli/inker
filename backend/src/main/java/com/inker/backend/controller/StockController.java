@@ -2,16 +2,23 @@ package com.inker.backend.controller;
 
 import com.inker.backend.dto.ImportResultDto;
 import com.inker.backend.dto.MarketSummaryDto;
+import com.inker.backend.dto.QuoteSyncProgressDto;
 import com.inker.backend.dto.QuoteSyncResultDto;
+import com.inker.backend.dto.StockCleanupResultDto;
 import com.inker.backend.dto.StockDailyKLineDto;
 import com.inker.backend.dto.StockDto;
+import com.inker.backend.service.StockCleanupService;
 import com.inker.backend.service.StockImportService;
 import com.inker.backend.service.StockMarketDataService;
 import com.inker.backend.service.StockQuoteSyncService;
 import com.inker.backend.service.StockQueryService;
+import org.springframework.http.MediaType;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 import java.util.*;
 
 @RestController
@@ -22,15 +29,18 @@ public class StockController {
     private final StockImportService stockImportService;
     private final StockMarketDataService stockMarketDataService;
     private final StockQuoteSyncService stockQuoteSyncService;
+    private final StockCleanupService stockCleanupService;
 
     public StockController(StockQueryService stockQueryService,
                            StockImportService stockImportService,
                            StockMarketDataService stockMarketDataService,
-                           StockQuoteSyncService stockQuoteSyncService) {
+                           StockQuoteSyncService stockQuoteSyncService,
+                           StockCleanupService stockCleanupService) {
         this.stockQueryService = stockQueryService;
         this.stockImportService = stockImportService;
         this.stockMarketDataService = stockMarketDataService;
         this.stockQuoteSyncService = stockQuoteSyncService;
+        this.stockCleanupService = stockCleanupService;
     }
 
     @GetMapping("/stocks")
@@ -38,18 +48,24 @@ public class StockController {
                                     @RequestParam(required = false) String exchangeCode,
                                     @RequestParam(required = false) String boardType,
                                     @RequestParam(required = false) String industry,
+                                    @RequestParam(required = false) String concept,
                                     @RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size,
                                     @RequestParam(defaultValue = "code") String sortBy,
                                     @RequestParam(defaultValue = "ASC") String sortDirection) {
         int safePage = Math.max(page, 0);
         int safeSize = Math.max(1, Math.min(size, 200));
-        return stockQueryService.query(keyword, exchangeCode, boardType, industry, safePage, safeSize, sortBy, sortDirection);
+        return stockQueryService.query(keyword, exchangeCode, boardType, industry, concept, safePage, safeSize, sortBy, sortDirection);
     }
 
     @GetMapping("/stocks/industries")
     public List<String> getIndustries() {
         return stockQueryService.getAllIndustries();
+    }
+
+    @GetMapping("/stocks/concepts")
+    public List<String> getConcepts() {
+        return stockQueryService.getAllConcepts();
     }
 
     @GetMapping("/stocks/{id}")
@@ -79,11 +95,48 @@ public class StockController {
         return stockQuoteSyncService.syncDailyQuotesFromAkshare();
     }
 
+    @PostMapping("/stocks/cleanup/historical")
+    public StockCleanupResultDto cleanupHistoricalStocks() {
+        return stockCleanupService.cleanupHistoricalStocks();
+    }
+
+    @GetMapping(value = "/stocks/quotes/sync/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamQuoteSync() {
+        SseEmitter emitter = new SseEmitter(0L);
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                stockQuoteSyncService.syncDailyQuotesWithProgress(progress -> sendProgress(emitter, progress));
+                emitter.complete();
+            } catch (Exception exception) {
+                sendProgress(emitter, QuoteSyncProgressDto.builder()
+                        .stage("failed")
+                        .percent(100)
+                        .message(exception.getMessage() == null ? "行情同步失败" : exception.getMessage())
+                        .build());
+                emitter.complete();
+            }
+        });
+
+        return emitter;
+    }
+
     @GetMapping("/health")
     public Map<String, String> health() {
         Map<String, String> result = new HashMap<>();
         result.put("status", "UP");
         result.put("message", "Inker API is running");
         return result;
+    }
+
+    private void sendProgress(SseEmitter emitter, QuoteSyncProgressDto progress) {
+        try {
+            SseEmitter.SseEventBuilder event = SseEmitter.event()
+                    .name(progress.getStage())
+                    .data(progress, MediaType.APPLICATION_JSON);
+            emitter.send(event);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Failed to send quote sync progress", exception);
+        }
     }
 }

@@ -45,10 +45,28 @@ function navigate(to: string) {
           :total="store.marketSummary.value.total"
           :watchlist-count="store.watchlistCount.value"
           :importing="store.importing.value"
+          :quote-syncing="store.quoteSyncing.value"
           @sync="store.importStocks"
+          @sync-quotes="store.syncQuotesWithProgress"
         />
 
         <div v-if="store.importMessage.value" class="banner banner--success">{{ store.importMessage.value }}</div>
+        <div v-if="store.quoteSyncProgress.value || store.quoteSyncMessage.value" class="quote-sync-panel">
+          <div class="quote-sync-head">
+            <span class="quote-sync-title">{{ store.quoteSyncMessage.value || store.quoteSyncProgress.value?.message }}</span>
+            <strong class="quote-sync-percent">{{ store.quoteSyncProgress.value?.percent ?? 0 }}%</strong>
+          </div>
+          <div class="quote-sync-track" role="progressbar" :aria-valuenow="store.quoteSyncProgress.value?.percent ?? 0" aria-valuemin="0" aria-valuemax="100">
+            <div class="quote-sync-fill" :style="{ width: `${store.quoteSyncProgress.value?.percent ?? 0}%` }"></div>
+          </div>
+          <div class="quote-sync-meta">
+            <span>交易日 {{ store.quoteSyncProgress.value?.tradeDate ?? '确认中' }}</span>
+            <span>抓取 {{ store.quoteSyncProgress.value?.fetched ?? 0 }}</span>
+            <span>匹配 {{ store.quoteSyncProgress.value?.matched ?? 0 }}</span>
+            <span>更新 {{ store.quoteSyncProgress.value?.updated ?? 0 }}</span>
+            <span>未匹配 {{ store.quoteSyncProgress.value?.skippedMissing ?? 0 }}</span>
+          </div>
+        </div>
         <ErrorAlert v-if="store.error.value" :message="store.error.value" />
 
         <RouterView />

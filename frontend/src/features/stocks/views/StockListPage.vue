@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useStocksList } from '@/features/stocks/composables/useStocksList'
 import PanelCard from '@/shared/components/layout/PanelCard.vue'
 import SectionHeader from '@/shared/components/layout/SectionHeader.vue'
 import PaginationBar from '@/shared/components/interaction/PaginationBar.vue'
+import SearchableSelect from '@/shared/components/interaction/SearchableSelect.vue'
 import PriceChangeChip from '@/shared/components/display/PriceChangeChip.vue'
 import BoardTag from '@/shared/components/display/BoardTag.vue'
 import ConceptChipGroup from '@/shared/components/display/ConceptChipGroup.vue'
@@ -13,7 +15,31 @@ import EmptyState from '@/shared/components/feedback/EmptyState.vue'
 import type { Stock, StockQueryParams } from '@/api/stock'
 
 const router = useRouter()
+const route = useRoute()
 const store = useStocksList()
+
+function conceptFromQuery(value: unknown) {
+  if (Array.isArray(value)) {
+    return String(value[0] ?? '').trim()
+  }
+
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+watch(
+  () => route.query.concept,
+  (value) => {
+    const nextConcept = conceptFromQuery(value)
+
+    if (store.concept.value === nextConcept) {
+      return
+    }
+
+    store.concept.value = nextConcept
+    store.onSearch()
+  },
+  { immediate: true }
+)
 
 function openDetail(stock: Stock) {
   void router.push(`/stocks/${stock.id}`)
@@ -22,11 +48,29 @@ function openDetail(stock: Stock) {
 function onSort(field: StockQueryParams['sortBy']) {
   void store.onSort(field)
 }
+
+function onConceptChange(value: string) {
+  const nextConcept = value.trim()
+  const nextQuery = { ...route.query }
+
+  if (nextConcept) {
+    nextQuery.concept = nextConcept
+  } else {
+    delete nextQuery.concept
+  }
+
+  if (conceptFromQuery(route.query.concept) === nextConcept) {
+    store.onSearch()
+    return
+  }
+
+  void router.replace({ name: 'stocks', query: nextQuery })
+}
 </script>
 
 <template>
   <div class="page-stack">
-    <div class="filter">
+    <div class="filter filter--stocks-sticky">
       <div class="filter-fields">
         <div class="filter-group filter-group--wide">
           <label class="field-label">关键词</label>
@@ -60,19 +104,35 @@ function onSort(field: StockQueryParams['sortBy']) {
 
         <div class="filter-group filter-group--wide">
           <label class="field-label">行业</label>
-          <input :value="store.industry.value" class="field-control" list="industry-list" placeholder="输入行业关键词"
-            @input="store.industry.value = ($event.target as HTMLInputElement).value"
-            @input.capture="store.debouncedOnSearch" />
-          <datalist id="industry-list">
-            <option v-for="item in store.suggestedIndustries.value" :key="item" :value="item" />
-          </datalist>
+          <SearchableSelect
+            v-model="store.industry.value"
+            :options="store.industryOptions.value"
+            placeholder="输入行业关键词"
+            :allow-custom="true"
+            @change="store.debouncedOnSearch"
+          />
+        </div>
+
+        <div class="filter-group filter-group--wide">
+          <label class="field-label">概念</label>
+          <SearchableSelect
+            v-model="store.concept.value"
+            :options="store.conceptOptions.value"
+            placeholder="选择概念"
+            :allow-custom="false"
+            @change="onConceptChange"
+          />
         </div>
       </div>
       <button class="btn btn-primary" type="button" @click="store.onSearch">开始筛选</button>
     </div>
     <PanelCard as="main" class="table-panel">
       <div class="table-toolbar">
-        <SectionHeader eyebrow="Market List" title="股票列表" subtitle="点击表头切换排序，点击代码名称打开个股详情。" />
+        <SectionHeader eyebrow="Market List" title="股票列表" subtitle="点击表头切换排序，点击代码名称打开个股详情。">
+          <template #extra>
+            <span class="stock-count">{{ store.totalElements.value }} 只</span>
+          </template>
+        </SectionHeader>
       </div>
 
       <div class="table-wrapper">

@@ -6,6 +6,7 @@ export interface Stock {
   name: string
   latestPrice: number | null
   changePercent: number | null
+  totalMarketValue: number | null
   market: string
   exchangeCode?: string
   industry?: string
@@ -48,9 +49,10 @@ export interface StockQueryParams {
   exchangeCode?: 'SSE' | 'SZSE'
   boardType?: string
   industry?: string
+  concept?: string
   page?: number
   size?: number
-  sortBy?: 'code' | 'name' | 'exchangeCode' | 'market' | 'industry' | 'listDate' | 'id' | 'latestPrice' | 'changePercent' | 'boardType'
+  sortBy?: 'code' | 'name' | 'exchangeCode' | 'market' | 'industry' | 'listDate' | 'id' | 'latestPrice' | 'changePercent' | 'totalMarketValue' | 'boardType'
   sortDirection?: 'ASC' | 'DESC'
 }
 
@@ -69,6 +71,26 @@ export interface ImportResult {
   skippedBeijingExchange: number
 }
 
+export interface QuoteSyncResult {
+  source: string
+  fetched: number
+  matched: number
+  updated: number
+  skippedMissing: number
+}
+
+export interface QuoteSyncProgress {
+  stage: string
+  percent: number
+  message: string
+  tradeDate: string | null
+  fetched: number
+  matched: number
+  updated: number
+  skippedMissing: number
+  result?: QuoteSyncResult
+}
+
 export interface CreateWatchlistGroupRequest {
   name: string
 }
@@ -83,7 +105,10 @@ export const stockApi = {
   getStock: (id: number) => http.get<Stock>(`/stocks/${id}`),
   getDailyKLine: (id: number, limit = 60) => http.get<StockDailyKLine>(`/stocks/${id}/daily-k-line`, { params: { limit } }),
   getIndustries: () => http.get<string[]>('/stocks/industries'),
+  getConcepts: () => http.get<string[]>('/stocks/concepts'),
   importStocks: () => http.post<ImportResult>('/stocks/import', null, { timeout: 120000 }),
+  syncQuotes: () => http.post<QuoteSyncResult>('/stocks/quotes/sync', null, { timeout: 120000 }),
+  quoteSyncStreamUrl: () => `${http.defaults.baseURL ?? ''}/stocks/quotes/sync/stream`,
   health: () => http.get('/health'),
 
   getWatchlistGroups: () => http.get<WatchlistGroup[]>('/watchlist/groups'),

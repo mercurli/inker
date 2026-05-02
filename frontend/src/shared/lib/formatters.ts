@@ -15,6 +15,18 @@ export function formatPercent(pct: number | null) {
   return `${sign}${pct.toFixed(2)}%`
 }
 
+export function formatMarketValue(value: number | null) {
+  if (value == null) {
+    return '--'
+  }
+
+  if (Math.abs(value) >= 10000) {
+    return `${(value / 10000).toFixed(2)}亿`
+  }
+
+  return `${value.toFixed(0)}万`
+}
+
 export function formatDate(value: string | undefined) {
   if (!value) {
     return '--'

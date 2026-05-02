@@ -24,6 +24,9 @@ public interface StockRepository extends JpaRepository<Stock, Long>, JpaSpecific
     @Query("SELECT DISTINCT s.industry FROM Stock s WHERE s.industry IS NOT NULL ORDER BY s.industry")
     List<String> findDistinctIndustries();
 
+    @Query("SELECT DISTINCT concept FROM Stock s JOIN s.concepts concept")
+    List<String> findDistinctConcepts();
+
     @Query("SELECT s.changePercent FROM Stock s")
     List<Double> findAllChangePercents();
 

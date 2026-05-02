@@ -27,6 +27,7 @@ public class StockQueryService {
                                 String exchangeCode,
                                 String boardType,
                                 String industry,
+                                String concept,
                                 int page,
                                 int size,
                                 String sortBy,
@@ -35,6 +36,7 @@ public class StockQueryService {
         String normalizedExchangeCode = normalize(exchangeCode);
         String normalizedBoardType = normalize(boardType);
         String normalizedIndustry = normalize(industry);
+        String normalizedConcept = normalize(concept);
         String normalizedSortBy = normalizeSortBy(sortBy);
         Sort.Direction direction = "DESC".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, normalizedSortBy));
@@ -43,7 +45,8 @@ public class StockQueryService {
                 .where(byKeyword(normalizedKeyword))
                 .and(byExchange(normalizedExchangeCode))
                 .and(byBoardType(normalizedBoardType))
-                .and(byIndustry(normalizedIndustry));
+                .and(byIndustry(normalizedIndustry))
+                .and(byConcept(normalizedConcept));
 
         return stockRepository.findAll(specification, pageable)
                 .map(StockDto::fromEntity);
@@ -55,6 +58,15 @@ public class StockQueryService {
 
     public List<String> getAllIndustries() {
         return stockRepository.findDistinctIndustries();
+    }
+
+    public List<String> getAllConcepts() {
+        return stockRepository.findDistinctConcepts().stream()
+                .map(String::trim)
+                .filter(concept -> !concept.isBlank())
+                .distinct()
+                .sorted(String::compareTo)
+                .toList();
     }
 
     public MarketSummaryDto getMarketSummary() {
@@ -149,6 +161,16 @@ public class StockQueryService {
         return (root, query, cb) -> cb.like(cb.lower(root.get("industry")), "%" + industry.toLowerCase() + "%");
     }
 
+    private Specification<Stock> byConcept(String concept) {
+        if (concept == null) {
+            return null;
+        }
+        return (root, query, cb) -> {
+            query.distinct(true);
+            return cb.equal(cb.trim(root.join("concepts")), concept);
+        };
+    }
+
     private String normalize(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -161,7 +183,7 @@ public class StockQueryService {
             return "code";
         }
         return switch (sortBy) {
-            case "name", "exchangeCode", "market", "industry", "listDate", "id", "latestPrice", "changePercent", "boardType" -> sortBy;
+            case "name", "exchangeCode", "market", "industry", "listDate", "id", "latestPrice", "changePercent", "totalMarketValue", "boardType" -> sortBy;
             default -> "code";
         };
     }

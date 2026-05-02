@@ -7,6 +7,7 @@ import SectionHeader from '@/shared/components/layout/SectionHeader.vue'
 import LoadingState from '@/shared/components/feedback/LoadingState.vue'
 import ErrorAlert from '@/shared/components/feedback/ErrorAlert.vue'
 import PriceChangeChip from '@/shared/components/display/PriceChangeChip.vue'
+import ConceptChipGroup from '@/shared/components/display/ConceptChipGroup.vue'
 
 type RangeKey = '1M' | '3M' | '6M'
 
@@ -119,6 +120,39 @@ const hoveredCandle = computed(() => {
 
   return chartGeometry.value.items.find((item) => item.tradeDate === hoveredDate.value) ?? null
 })
+
+const activeCandle = computed(() => hoveredCandle.value ?? latestCandle.value)
+
+const hoverDateLabel = computed(() => {
+  const candle = hoveredCandle.value
+  const geometry = chartGeometry.value
+
+  if (!candle || !geometry) {
+    return null
+  }
+
+  const labelWidth = 76
+  const labelHeight = 24
+  const labelX = Math.min(
+    Math.max(candle.x - labelWidth / 2, geometry.padding.left),
+    geometry.width - geometry.padding.right - labelWidth
+  )
+  const labelY = geometry.padding.top + 8
+
+  return {
+    x: labelX,
+    y: labelY,
+    width: labelWidth,
+    height: labelHeight,
+    textX: labelX + labelWidth / 2,
+    textY: labelY + labelHeight / 2,
+    text: candle.tradeDate
+  }
+})
+
+function openConceptFilter(concept: string) {
+  void router.push({ name: 'stocks', query: { concept } })
+}
 </script>
 
 <template>
@@ -173,7 +207,12 @@ const hoveredCandle = computed(() => {
           <article class="detail-item"><span class="detail-item-label">上市日期</span><strong>{{ store.formatDate(store.selectedStock.value.listDate) }}</strong></article>
           <article class="detail-item detail-item--full">
             <span class="detail-item-label">所属概念</span>
-            <strong>{{ store.selectedStock.value.concepts.length > 0 ? store.selectedStock.value.concepts.join(' / ') : '--' }}</strong>
+            <ConceptChipGroup
+              :concepts="store.selectedStock.value.concepts"
+              :max="store.selectedStock.value.concepts.length"
+              clickable
+              @select="openConceptFilter"
+            />
           </article>
         </div>
       </template>
@@ -203,10 +242,11 @@ const hoveredCandle = computed(() => {
       <template v-else>
         <div class="kline-card">
           <div class="kline-summary-strip">
-            <article class="detail-item"><span class="detail-item-label">当前价</span><strong>{{ latestCandle ? latestCandle.closePrice.toFixed(2) : '--' }}</strong></article>
-            <article class="detail-item"><span class="detail-item-label">当日涨幅</span><PriceChangeChip :tone="store.changeClass(latestCandle?.changePercent ?? null)" :value="store.formatPercent(latestCandle?.changePercent ?? null)" /></article>
-            <article class="detail-item"><span class="detail-item-label">最低价</span><strong>{{ chartGeometry.minPrice.toFixed(2) }}</strong></article>
-            <article class="detail-item"><span class="detail-item-label">最高价</span><strong>{{ chartGeometry.maxPrice.toFixed(2) }}</strong></article>
+            <article class="detail-item"><span class="detail-item-label">当前价</span><strong>{{ activeCandle ? activeCandle.closePrice.toFixed(2) : '--' }}</strong></article>
+            <article class="detail-item"><span class="detail-item-label">当日涨幅</span><PriceChangeChip :tone="store.changeClass(activeCandle?.changePercent ?? null)" :value="store.formatPercent(activeCandle?.changePercent ?? null)" /></article>
+            <article class="detail-item"><span class="detail-item-label">开盘价</span><strong>{{ activeCandle ? activeCandle.openPrice.toFixed(2) : '--' }}</strong></article>
+            <article class="detail-item"><span class="detail-item-label">最高价</span><strong>{{ activeCandle ? activeCandle.highPrice.toFixed(2) : '--' }}</strong></article>
+            <article class="detail-item"><span class="detail-item-label">最低价</span><strong>{{ activeCandle ? activeCandle.lowPrice.toFixed(2) : '--' }}</strong></article>
           </div>
 
           <div class="kline-svg-shell">
@@ -272,6 +312,23 @@ const hoveredCandle = computed(() => {
                 :y2="chartGeometry.height - chartGeometry.padding.bottom"
                 class="kline-hover-guide"
               />
+              <g v-if="hoverDateLabel" class="kline-hover-label">
+                <rect
+                  :x="hoverDateLabel.x"
+                  :y="hoverDateLabel.y"
+                  :width="hoverDateLabel.width"
+                  :height="hoverDateLabel.height"
+                  rx="8"
+                />
+                <text
+                  :x="hoverDateLabel.textX"
+                  :y="hoverDateLabel.textY"
+                  text-anchor="middle"
+                  dominant-baseline="middle"
+                >
+                  {{ hoverDateLabel.text }}
+                </text>
+              </g>
             </svg>
           </div>
 

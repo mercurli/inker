@@ -29,7 +29,7 @@ public interface WatchlistGroupStockRepository extends JpaRepository<WatchlistGr
     void deleteByStockId(Long stockId);
 
     @Modifying
-    void deleteByStockIdIn(Collection<Long> stockIds);
+    long deleteByStockIdIn(Collection<Long> stockIds);
 
     @Query("select distinct gs.stock.id from WatchlistGroupStock gs")
     List<Long> findDistinctStockIds();

@@ -5,10 +5,12 @@ defineProps<{
   total: number
   watchlistCount: number
   importing: boolean
+  quoteSyncing: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'sync'): void
+  (e: 'sync-quotes'): void
 }>()
 </script>
 
@@ -30,6 +32,9 @@ const emit = defineEmits<{
       </div>
       <button class="btn btn-primary" type="button" :disabled="importing" @click="emit('sync')">
         {{ importing ? '同步中...' : '同步A股数据' }}
+      </button>
+      <button class="btn" type="button" :disabled="quoteSyncing" @click="emit('sync-quotes')">
+        {{ quoteSyncing ? '行情同步中...' : '同步行情' }}
       </button>
     </div>
   </header>

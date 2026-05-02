@@ -65,6 +65,9 @@ public class Stock {
     @Column
     private Double changePercent;
 
+    @Column
+    private Double totalMarketValue;
+
     @Column(length = 16)
     private String boardType;
 

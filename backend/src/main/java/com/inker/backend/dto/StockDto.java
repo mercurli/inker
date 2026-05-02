@@ -14,6 +14,7 @@ public class StockDto {
     String name;
     Double latestPrice;
     Double changePercent;
+    Double totalMarketValue;
     String market;
     String exchangeCode;
     String industry;
@@ -28,6 +29,7 @@ public class StockDto {
                 .name(stock.getName())
                 .latestPrice(stock.getLatestPrice())
                 .changePercent(stock.getChangePercent())
+                .totalMarketValue(stock.getTotalMarketValue())
                 .market(stock.getMarket())
                 .exchangeCode(stock.getExchangeCode())
                 .industry(stock.getIndustry())

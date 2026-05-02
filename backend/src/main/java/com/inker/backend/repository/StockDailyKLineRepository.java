@@ -3,6 +3,7 @@ package com.inker.backend.repository;
 import com.inker.backend.entity.StockDailyKLine;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 
 import java.time.LocalDate;
 import java.util.Collection;
@@ -15,4 +16,7 @@ public interface StockDailyKLineRepository extends JpaRepository<StockDailyKLine
     List<StockDailyKLine> findByStockIdAndTradeDateIn(Long stockId, Collection<LocalDate> tradeDates);
 
     long countByStockId(Long stockId);
+
+    @Modifying
+    long deleteByStockIdIn(Collection<Long> stockIds);
 }
