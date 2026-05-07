@@ -7,11 +7,13 @@ import com.inker.backend.dto.QuoteSyncResultDto;
 import com.inker.backend.dto.StockCleanupResultDto;
 import com.inker.backend.dto.StockDailyKLineDto;
 import com.inker.backend.dto.StockDto;
+import com.inker.backend.dto.UpdateStockConceptsRequest;
 import com.inker.backend.service.StockCleanupService;
 import com.inker.backend.service.StockImportService;
 import com.inker.backend.service.StockMarketDataService;
 import com.inker.backend.service.StockQuoteSyncService;
 import com.inker.backend.service.StockQueryService;
+import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
@@ -72,6 +74,12 @@ public class StockController {
     public StockDto getStock(@PathVariable Long id) {
         return stockQueryService.getById(id)
                 .orElseThrow(() -> new NoSuchElementException("Stock not found, id=" + id));
+    }
+
+    @PatchMapping("/stocks/{id}/concepts")
+    public StockDto updateStockConcepts(@PathVariable Long id,
+                                        @Valid @RequestBody UpdateStockConceptsRequest request) {
+        return stockQueryService.updateConcepts(id, request);
     }
 
     @GetMapping("/stocks/{id}/daily-k-line")

@@ -66,10 +66,28 @@ public class Stock {
     private Double changePercent;
 
     @Column
+    private Double volume;
+
+    @Column
+    private Double amount;
+
+    @Column
+    private Double turnoverRate;
+
+    @Column
     private Double totalMarketValue;
+
+    @Column
+    private Double circulatingMarketValue;
+
+    @Column
+    private Double dynamicPeRatio;
 
     @Column(length = 16)
     private String boardType;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean conceptsManuallyEdited;
 
     @Column(nullable = false)
     private boolean st;

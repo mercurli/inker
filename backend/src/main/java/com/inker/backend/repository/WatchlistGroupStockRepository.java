@@ -11,6 +11,14 @@ import java.util.List;
 
 public interface WatchlistGroupStockRepository extends JpaRepository<WatchlistGroupStock, Long> {
 
+    interface GroupIndustryCount {
+        Long getGroupId();
+
+        String getIndustry();
+
+        Long getStockCount();
+    }
+
     boolean existsByGroupIdAndStockId(Long groupId, Long stockId);
 
     boolean existsByStockId(Long stockId);
@@ -36,4 +44,26 @@ public interface WatchlistGroupStockRepository extends JpaRepository<WatchlistGr
 
     @Query("select distinct gs.stock.id from WatchlistGroupStock gs where gs.group.id = :groupId")
     List<Long> findStockIdsByGroupId(@Param("groupId") Long groupId);
+
+    @Query("""
+            select gs.group.id as groupId,
+                   case
+                       when gs.stock.industry is null or trim(gs.stock.industry) = '' then '未分类行业'
+                       else gs.stock.industry
+                   end as industry,
+                   count(gs.id) as stockCount
+            from WatchlistGroupStock gs
+            group by gs.group.id,
+                     case
+                         when gs.stock.industry is null or trim(gs.stock.industry) = '' then '未分类行业'
+                         else gs.stock.industry
+                     end
+            order by gs.group.id asc,
+                     count(gs.id) desc,
+                     case
+                         when gs.stock.industry is null or trim(gs.stock.industry) = '' then '未分类行业'
+                         else gs.stock.industry
+                     end asc
+            """)
+    List<GroupIndustryCount> countIndustriesByGroup();
 }

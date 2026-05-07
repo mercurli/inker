@@ -12,6 +12,7 @@ import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -38,11 +39,20 @@ public class WatchlistService {
         ensureDefaultGroup();
         List<WatchlistGroup> groups = watchlistGroupRepository.findAllByOrderBySortOrderAscIdAsc();
         Map<Long, Long> counts = new HashMap<>();
+        Map<Long, Map<String, Long>> industryCounts = new HashMap<>();
 
         groups.forEach(group -> counts.put(group.getId(), watchlistGroupStockRepository.countByGroupId(group.getId())));
+        watchlistGroupStockRepository.countIndustriesByGroup()
+                .forEach(item -> industryCounts
+                        .computeIfAbsent(item.getGroupId(), ignored -> new LinkedHashMap<>())
+                        .put(item.getIndustry(), item.getStockCount()));
 
         return groups.stream()
-                .map(group -> WatchlistGroupDto.fromEntity(group, counts.getOrDefault(group.getId(), 0L)))
+                .map(group -> WatchlistGroupDto.fromEntity(
+                        group,
+                        counts.getOrDefault(group.getId(), 0L),
+                        industryCounts.getOrDefault(group.getId(), Map.of())
+                ))
                 .toList();
     }
 

@@ -16,6 +16,7 @@ export function useStockDetail() {
     formatPercent: store.formatPercent,
     formatDate: store.formatDate,
     changeClass: store.changeClass,
-    loadDetailById: store.loadDetailById
+    loadDetailById: store.loadDetailById,
+    updateStockConcepts: store.updateStockConcepts
   }
 }

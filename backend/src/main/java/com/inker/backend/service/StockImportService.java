@@ -68,7 +68,9 @@ public class StockImportService {
             if (candidate.industry() != null) {
                 stock.setIndustry(candidate.industry());
             }
-            stock.setConcepts(stockProvider.fetchConcepts(candidate.code(), candidate.market()));
+            if (!stock.isConceptsManuallyEdited()) {
+                stock.setConcepts(stockProvider.fetchConcepts(candidate.code(), candidate.market()));
+            }
             if (candidate.listDate() != null) {
                 stock.setListDate(candidate.listDate());
             }

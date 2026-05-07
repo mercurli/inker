@@ -9,24 +9,27 @@ import ErrorAlert from '@/shared/components/feedback/ErrorAlert.vue'
 import PriceChangeChip from '@/shared/components/display/PriceChangeChip.vue'
 import ConceptChipGroup from '@/shared/components/display/ConceptChipGroup.vue'
 
-type RangeKey = '1M' | '3M' | '6M'
+type RangeKey = '3M' | '6M'
 
 const route = useRoute()
 const router = useRouter()
 const store = useStockDetail()
 
-const activeRange = ref<RangeKey>('1M')
-const rangeKeys: RangeKey[] = ['1M', '3M', '6M']
+const activeRange = ref<RangeKey>('3M')
+const rangeKeys: RangeKey[] = ['3M', '6M']
 const hoveredDate = ref<string | null>(null)
+const showConceptDialog = ref(false)
+const primaryConceptInput = ref('')
+const newConceptInput = ref('')
+const conceptSaving = ref(false)
+const conceptDialogError = ref('')
 
 const rangeConfig: Record<RangeKey, number> = {
-  '1M': 22,
   '3M': 66,
   '6M': 132
 }
 
 const rangeLabelMap: Record<RangeKey, string> = {
-  '1M': '近1月',
   '3M': '近3月',
   '6M': '近6月'
 }
@@ -56,7 +59,7 @@ const chartGeometry = computed(() => {
 
   const width = Math.max(720, candles.length * 22)
   const height = 320
-  const padding = { top: 16, right: 18, bottom: 28, left: 56 }
+  const padding = { top: 16, right: 18, bottom: 44, left: 56 }
   const guideCount = 5
   const innerWidth = width - padding.left - padding.right
   const innerHeight = height - padding.top - padding.bottom
@@ -79,6 +82,71 @@ const chartGeometry = computed(() => {
     }
   })
 
+  const items = candles.map((item, index) => {
+    const x = padding.left + index * step + step / 2
+    const openY = y(item.openPrice)
+    const closeY = y(item.closePrice)
+    const highY = y(item.highPrice)
+    const lowY = y(item.lowPrice)
+
+    return {
+      ...item,
+      x,
+      wickTop: highY,
+      wickBottom: lowY,
+      bodyY: Math.min(openY, closeY),
+      bodyHeight: Math.max(Math.abs(openY - closeY), 2),
+      bodyWidth,
+      tone: item.closePrice > item.openPrice ? 'up' : item.closePrice < item.openPrice ? 'down' : 'neutral'
+    }
+  })
+
+  const maxXTicks = Math.max(2, Math.floor(innerWidth / 120) + 1)
+  const xTickCount = Math.min(candles.length, maxXTicks)
+  const xTickIndexes = Array.from({ length: xTickCount }, (_, index) => {
+    if (xTickCount === 1) {
+      return 0
+    }
+
+    return Math.round((index * (candles.length - 1)) / (xTickCount - 1))
+  })
+  const xTicks = Array.from(new Set(xTickIndexes))
+    .map((index) => {
+      const candle = candles[index]
+      const item = items[index]
+
+      if (!candle || !item) {
+        return null
+      }
+
+      return {
+        key: `date-${candle.tradeDate}`,
+        x: item.x,
+        y: height - padding.bottom + 22,
+        label: candle.tradeDate
+      }
+    })
+    .filter((tick): tick is { key: string; x: number; y: number; label: string } => tick !== null)
+
+  const ma5Points = items
+    .map((item, index) => {
+      if (index < 4) {
+        return null
+      }
+
+      const averageClose =
+        candles.slice(index - 4, index + 1).reduce((sum, candle) => sum + candle.closePrice, 0) / 5
+
+      return {
+        key: `ma5-${item.tradeDate}`,
+        x: item.x,
+        y: y(averageClose),
+        value: averageClose
+      }
+    })
+    .filter((point): point is { key: string; x: number; y: number; value: number } => point !== null)
+  const ma5Polyline = ma5Points.map((point) => `${point.x},${point.y}`).join(' ')
+
   return {
     width,
     height,
@@ -87,24 +155,10 @@ const chartGeometry = computed(() => {
     minPrice,
     maxPrice,
     yTicks,
-    items: candles.map((item, index) => {
-      const x = padding.left + index * step + step / 2
-      const openY = y(item.openPrice)
-      const closeY = y(item.closePrice)
-      const highY = y(item.highPrice)
-      const lowY = y(item.lowPrice)
-
-      return {
-        ...item,
-        x,
-        wickTop: highY,
-        wickBottom: lowY,
-        bodyY: Math.min(openY, closeY),
-        bodyHeight: Math.max(Math.abs(openY - closeY), 2),
-        bodyWidth,
-        tone: item.closePrice > item.openPrice ? 'up' : item.closePrice < item.openPrice ? 'down' : 'neutral'
-      }
-    })
+    xTicks,
+    ma5Points,
+    ma5Polyline,
+    items
   }
 })
 
@@ -122,6 +176,9 @@ const hoveredCandle = computed(() => {
 })
 
 const activeCandle = computed(() => hoveredCandle.value ?? latestCandle.value)
+
+const currentConcepts = computed(() => store.selectedStock.value?.concepts ?? [])
+const primaryConcept = computed(() => store.selectedStock.value?.primaryConcept ?? currentConcepts.value[0] ?? null)
 
 const hoverDateLabel = computed(() => {
   const candle = hoveredCandle.value
@@ -152,6 +209,97 @@ const hoverDateLabel = computed(() => {
 
 function openConceptFilter(concept: string) {
   void router.push({ name: 'stocks', query: { concept } })
+}
+
+function openConceptDialog() {
+  primaryConceptInput.value = primaryConcept.value ?? ''
+  newConceptInput.value = ''
+  conceptDialogError.value = ''
+  showConceptDialog.value = true
+}
+
+function closeConceptDialog() {
+  if (conceptSaving.value) {
+    return
+  }
+
+  showConceptDialog.value = false
+  conceptDialogError.value = ''
+}
+
+async function savePrimaryConcept() {
+  const stock = store.selectedStock.value
+  const nextPrimaryConcept = primaryConceptInput.value.trim()
+
+  if (!stock || !nextPrimaryConcept) {
+    conceptDialogError.value = '请输入主概念。'
+    return
+  }
+
+  const nextConcepts = [
+    nextPrimaryConcept,
+    ...currentConcepts.value.filter((concept) => concept !== nextPrimaryConcept)
+  ]
+
+  await saveConcepts(nextConcepts)
+}
+
+async function saveNewConcept() {
+  const stock = store.selectedStock.value
+  const nextConcept = newConceptInput.value.trim()
+
+  if (!stock || !nextConcept) {
+    conceptDialogError.value = '请输入要新增的概念。'
+    return
+  }
+
+  if (currentConcepts.value.includes(nextConcept)) {
+    conceptDialogError.value = '该概念已存在。'
+    return
+  }
+
+  await saveConcepts([...currentConcepts.value, nextConcept])
+}
+
+async function deleteConcept(targetConcept: string) {
+  const stock = store.selectedStock.value
+  const conceptName = targetConcept.trim()
+
+  if (!stock || !conceptName) {
+    conceptDialogError.value = '请选择要删除的概念。'
+    return
+  }
+
+  await saveConcepts(currentConcepts.value.filter((concept) => concept !== conceptName))
+}
+
+function confirmDeleteConcept(concept: string) {
+  const confirmed = window.confirm(`确定删除概念“${concept}”吗？`)
+
+  if (!confirmed) {
+    return
+  }
+
+  void deleteConcept(concept)
+}
+
+async function saveConcepts(nextConcepts: string[]) {
+  const stock = store.selectedStock.value
+
+  if (!stock) {
+    return
+  }
+
+  try {
+    conceptSaving.value = true
+    conceptDialogError.value = ''
+    await store.updateStockConcepts(stock.id, nextConcepts)
+    showConceptDialog.value = false
+  } catch {
+    conceptDialogError.value = '保存失败，请稍后重试。'
+  } finally {
+    conceptSaving.value = false
+  }
 }
 </script>
 
@@ -208,15 +356,103 @@ function openConceptFilter(concept: string) {
           <article class="detail-item detail-item--full">
             <span class="detail-item-label">所属概念</span>
             <ConceptChipGroup
-              :concepts="store.selectedStock.value.concepts"
-              :max="store.selectedStock.value.concepts.length"
+              :concepts="currentConcepts"
+              :primary-concept="primaryConcept"
+              :max="currentConcepts.length"
               clickable
               @select="openConceptFilter"
-            />
+            >
+              <template #append>
+                <button class="concept-chip concept-chip--button concept-chip--icon" type="button" aria-label="编辑概念" title="编辑概念" @click="openConceptDialog">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 20H21" />
+                    <path d="M16.5 3.5A2.12 2.12 0 0 1 19.5 6.5L7 19L3 20L4 16L16.5 3.5Z" />
+                  </svg>
+                </button>
+              </template>
+            </ConceptChipGroup>
           </article>
         </div>
       </template>
     </PanelCard>
+
+    <div v-if="showConceptDialog" class="dialog-backdrop" @click.self="closeConceptDialog">
+      <div class="dialog-card concept-dialog">
+        <div class="concept-dialog__header">
+          <h3 class="dialog-title">编辑概念</h3>
+          <button class="btn btn-icon" type="button" aria-label="关闭" title="关闭" :disabled="conceptSaving" @click="closeConceptDialog">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6L6 18" />
+              <path d="M6 6L18 18" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="concept-dialog__section concept-dialog__section--stacked">
+          <span class="field-label">当前概念</span>
+          <div class="concept-delete-list">
+            <span v-for="concept in currentConcepts" :key="concept" class="concept-chip concept-chip--deletable" :class="{ 'concept-chip--primary': concept === primaryConcept }">
+              {{ concept }}
+              <button
+                class="concept-chip__icon-button"
+                type="button"
+                :aria-label="`删除概念 ${concept}`"
+                :title="`删除概念 ${concept}`"
+                :disabled="conceptSaving"
+                @click="confirmDeleteConcept(concept)"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6L18 18" />
+                </svg>
+              </button>
+            </span>
+            <span v-if="currentConcepts.length === 0" class="concept-delete-empty">暂无概念</span>
+          </div>
+        </div>
+
+        <div class="concept-dialog__section">
+          <label class="field-label" for="primary-concept-input">主概念</label>
+          <input
+            id="primary-concept-input"
+            v-model="primaryConceptInput"
+            class="field-control"
+            list="stock-concept-options"
+            :disabled="conceptSaving"
+            placeholder="输入概念名称"
+            @keyup.enter="savePrimaryConcept"
+          />
+          <button class="btn btn-primary" type="button" :disabled="conceptSaving" @click="savePrimaryConcept">
+            保存
+          </button>
+        </div>
+
+        <div class="concept-dialog__section">
+          <label class="field-label" for="new-concept-input">新增概念</label>
+          <input
+            id="new-concept-input"
+            v-model="newConceptInput"
+            class="field-control"
+            :disabled="conceptSaving"
+            placeholder="输入概念名称"
+            @keyup.enter="saveNewConcept"
+          />
+          <button class="btn btn-primary" type="button" :disabled="conceptSaving" @click="saveNewConcept">
+            新增
+          </button>
+        </div>
+
+        <datalist id="stock-concept-options">
+          <option v-for="concept in currentConcepts" :key="concept" :value="concept" />
+        </datalist>
+
+        <p v-if="conceptDialogError" class="dialog-error">{{ conceptDialogError }}</p>
+
+        <div class="dialog-actions">
+          <button class="btn" type="button" :disabled="conceptSaving" @click="closeConceptDialog">取消</button>
+        </div>
+      </div>
+    </div>
 
     <PanelCard>
       <div class="kline-toolbar">
@@ -277,6 +513,17 @@ function openConceptFilter(concept: string) {
               >
                 {{ tick.label }}
               </text>
+              <text
+                v-for="tick in chartGeometry.xTicks"
+                :key="tick.key"
+                :x="tick.x"
+                :y="tick.y"
+                class="kline-x-label"
+                text-anchor="middle"
+                dominant-baseline="middle"
+              >
+                {{ tick.label }}
+              </text>
 
               <g v-for="item in chartGeometry.items" :key="item.tradeDate">
                 <line
@@ -303,6 +550,11 @@ function openConceptFilter(concept: string) {
                   @mouseenter="hoveredDate = item.tradeDate"
                 />
               </g>
+              <polyline
+                v-if="chartGeometry.ma5Points.length > 1"
+                :points="chartGeometry.ma5Polyline"
+                class="kline-ma5-line"
+              />
 
               <line
                 v-if="hoveredCandle"
@@ -330,11 +582,6 @@ function openConceptFilter(concept: string) {
                 </text>
               </g>
             </svg>
-          </div>
-
-          <div class="kline-axis">
-            <span>{{ visibleCandles[0]?.tradeDate }}</span>
-            <span>{{ visibleCandles[visibleCandles.length - 1]?.tradeDate }}</span>
           </div>
         </div>
       </template>

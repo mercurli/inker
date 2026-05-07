@@ -11,6 +11,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,6 +39,7 @@ class WatchlistServiceTest {
         stock1.setName("浦发银行");
         stock1.setExchangeCode("SSE");
         stock1.setMarket("A股");
+        stock1.setIndustry("银行");
         stock1.setSt(false);
 
         Stock stock2 = new Stock();
@@ -45,6 +47,7 @@ class WatchlistServiceTest {
         stock2.setName("平安银行");
         stock2.setExchangeCode("SZSE");
         stock2.setMarket("A股");
+        stock2.setIndustry(" ");
         stock2.setSt(false);
 
         stockId1 = stockRepository.save(stock1).getId();
@@ -108,6 +111,35 @@ class WatchlistServiceTest {
     }
 
     @Test
+    void getGroupsShouldIncludeIndustryCountsPerGroup() {
+        WatchlistGroupDto groupA = watchlistService.createGroup("A");
+        WatchlistGroupDto groupB = watchlistService.createGroup("B");
+        Long stockId3 = stockRepository.save(createStock("688001", "华兴科技", "SSE", "半导体")).getId();
+        Long stockId4 = stockRepository.save(createStock("300001", "深城银行", "SZSE", "银行")).getId();
+
+        watchlistService.ensureStockInGroup(groupA.getId(), stockId1);
+        watchlistService.ensureStockInGroup(groupA.getId(), stockId2);
+        watchlistService.ensureStockInGroup(groupA.getId(), stockId4);
+        watchlistService.ensureStockInGroup(groupB.getId(), stockId3);
+
+        List<WatchlistGroupDto> groups = watchlistService.getGroups();
+        Map<String, Long> groupAIndustries = groups.stream()
+                .filter(group -> group.getId().equals(groupA.getId()))
+                .findFirst()
+                .orElseThrow()
+                .getIndustryCounts();
+        Map<String, Long> groupBIndustries = groups.stream()
+                .filter(group -> group.getId().equals(groupB.getId()))
+                .findFirst()
+                .orElseThrow()
+                .getIndustryCounts();
+
+        assertEquals(2L, groupAIndustries.get("银行"));
+        assertEquals(1L, groupAIndustries.get("未分类行业"));
+        assertEquals(Map.of("半导体", 1L), groupBIndustries);
+    }
+
+    @Test
     void deleteGroupShouldCancelWatchForStocksInsideGroup() {
         WatchlistGroupDto groupA = watchlistService.createGroup("A");
         WatchlistGroupDto groupB = watchlistService.createGroup("B");
@@ -119,5 +151,16 @@ class WatchlistServiceTest {
 
         assertEquals(0, watchlistService.getGroupStocks(groupB.getId()).size());
         assertTrue(watchlistService.getWatchedStockIds().isEmpty());
+    }
+
+    private Stock createStock(String code, String name, String exchangeCode, String industry) {
+        Stock stock = new Stock();
+        stock.setCode(code);
+        stock.setName(name);
+        stock.setExchangeCode(exchangeCode);
+        stock.setMarket("A股");
+        stock.setIndustry(industry);
+        stock.setSt(false);
+        return stock;
     }
 }

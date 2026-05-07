@@ -18,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -35,6 +36,7 @@ public class StockQuoteSyncService {
     private static final Logger log = LoggerFactory.getLogger(StockQuoteSyncService.class);
     private static final int BATCH_SIZE = 500;
     private static final String USER_AGENT_VALUE = "Inker/1.0 (+https://github.com/inker)";
+    private static final String TONG_HUA_SHUN_REALHEAD_URL_TEMPLATE = "https://d.10jqka.com.cn/v2/realhead/%s_%s/last.js";
 
     private final StockRepository stockRepository;
     private final LatestTradeDateService latestTradeDateService;
@@ -116,10 +118,7 @@ public class StockQuoteSyncService {
                     stock.setChangePercent(quote.changePercent());
                     changed = true;
                 }
-                if (!sameDouble(stock.getTotalMarketValue(), quote.totalMarketValue())) {
-                    stock.setTotalMarketValue(quote.totalMarketValue());
-                    changed = true;
-                }
+                changed = updateTongHuaShunFields(stock, quote.tongHuaShunQuote()) || changed;
 
                 if (changed) {
                     progress.updated++;
@@ -167,12 +166,12 @@ public class StockQuoteSyncService {
             return List.of();
         }
 
-        Map<String, Double> totalMarketValueByCode = fetchTotalMarketValuesFromTushare(tradeDate);
         List<TushareQuote> quotes = new ArrayList<>();
         for (JsonNode item : itemsNode) {
             if (!item.isArray()) {
                 continue;
             }
+            String tsCode = readText(item, fieldIndexMap, "ts_code");
             String code = normalizeTsCode(readText(item, fieldIndexMap, "ts_code"));
             if (code == null) {
                 continue;
@@ -181,33 +180,79 @@ public class StockQuoteSyncService {
                     code,
                     readDouble(item, fieldIndexMap, "close"),
                     readDouble(item, fieldIndexMap, "pct_chg"),
-                    totalMarketValueByCode.get(code)
+                    fetchTongHuaShunQuote(code, normalizeTongHuaShunMarket(tsCode))
             ));
         }
         return quotes;
     }
 
-    private Map<String, Double> fetchTotalMarketValuesFromTushare(String tradeDate) {
-        JsonNode data = callTushare("daily_basic", Map.of("trade_date", tradeDate), "ts_code,total_mv");
-        Map<String, Integer> fieldIndexMap = buildFieldIndexMap(data.path("fields"));
-        JsonNode itemsNode = data.path("items");
-        if (!itemsNode.isArray() || itemsNode.isEmpty()) {
-            log.warn("Tushare daily_basic API returned empty market value data. tradeDate={}", tradeDate);
-            return Map.of();
+    private TongHuaShunQuote fetchTongHuaShunQuote(String code, String market) {
+        if (code == null || code.isBlank() || market == null || market.isBlank()) {
+            return TongHuaShunQuote.empty();
         }
 
-        Map<String, Double> totalMarketValueByCode = new HashMap<>();
-        for (JsonNode item : itemsNode) {
-            if (!item.isArray()) {
-                continue;
-            }
-            String code = normalizeTsCode(readText(item, fieldIndexMap, "ts_code"));
-            if (code == null) {
-                continue;
-            }
-            totalMarketValueByCode.put(code, readDouble(item, fieldIndexMap, "total_mv"));
+        URI uri = URI.create(TONG_HUA_SHUN_REALHEAD_URL_TEMPLATE.formatted(market, code));
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36");
+        headers.set(HttpHeaders.ACCEPT, MediaType.ALL_VALUE);
+        headers.set(HttpHeaders.REFERER, "https://stockpage.10jqka.com.cn/" + code + "/");
+
+        try {
+            ResponseEntity<String> response = restTemplate.exchange(uri, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            return parseTongHuaShunQuote(response.getBody());
+        } catch (RestClientException | IllegalStateException exception) {
+            log.warn("Failed to fetch TongHuaShun quote. code={}, market={}, message={}", code, market, exception.getMessage());
+            return TongHuaShunQuote.empty();
         }
-        return totalMarketValueByCode;
+    }
+
+    TongHuaShunQuote parseTongHuaShunQuote(String body) {
+        if (body == null || body.isBlank()) {
+            return TongHuaShunQuote.empty();
+        }
+
+        String json = extractJsonpPayload(body);
+        try {
+            JsonNode items = objectMapper.readTree(json).path("items");
+            return new TongHuaShunQuote(
+                    readDouble(items, "13"),
+                    readDouble(items, "19"),
+                    readDouble(items, "1968584"),
+                    readDouble(items, "3475914"),
+                    readDouble(items, "3541450"),
+                    readDouble(items, "2942")
+            );
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to parse TongHuaShun quote response", exception);
+        }
+    }
+
+    private String extractJsonpPayload(String body) {
+        int start = body.indexOf('(');
+        int end = body.lastIndexOf(')');
+        if (start < 0 || end <= start) {
+            throw new IllegalStateException("TongHuaShun quote response is not JSONP");
+        }
+        return body.substring(start + 1, end);
+    }
+
+    private boolean updateTongHuaShunFields(Stock stock, TongHuaShunQuote quote) {
+        boolean changed = false;
+        changed = updateIfPresent(stock.getVolume(), quote.volume(), stock::setVolume) || changed;
+        changed = updateIfPresent(stock.getAmount(), quote.amount(), stock::setAmount) || changed;
+        changed = updateIfPresent(stock.getTurnoverRate(), quote.turnoverRate(), stock::setTurnoverRate) || changed;
+        changed = updateIfPresent(stock.getTotalMarketValue(), quote.totalMarketValue(), stock::setTotalMarketValue) || changed;
+        changed = updateIfPresent(stock.getCirculatingMarketValue(), quote.circulatingMarketValue(), stock::setCirculatingMarketValue) || changed;
+        changed = updateIfPresent(stock.getDynamicPeRatio(), quote.dynamicPeRatio(), stock::setDynamicPeRatio) || changed;
+        return changed;
+    }
+
+    private boolean updateIfPresent(Double currentValue, Double nextValue, Consumer<Double> setter) {
+        if (nextValue == null || sameDouble(currentValue, nextValue)) {
+            return false;
+        }
+        setter.accept(nextValue);
+        return true;
     }
 
     private JsonNode callTushare(String apiName, Map<String, Object> params, String fields) {
@@ -280,6 +325,20 @@ public class StockQuoteSyncService {
         return normalized.isBlank() ? null : normalized;
     }
 
+    private String normalizeTongHuaShunMarket(String tsCode) {
+        if (tsCode == null || tsCode.isBlank()) {
+            return null;
+        }
+        String normalized = tsCode.trim().toUpperCase();
+        if (normalized.endsWith(".SH")) {
+            return "sh";
+        }
+        if (normalized.endsWith(".SZ")) {
+            return "sz";
+        }
+        return null;
+    }
+
     private String readText(JsonNode arrayNode, Map<String, Integer> fieldIndexMap, String fieldName) {
         Integer index = fieldIndexMap.get(fieldName);
         if (index == null || index < 0 || index >= arrayNode.size()) {
@@ -299,6 +358,22 @@ public class StockQuoteSyncService {
         }
         try {
             return Double.parseDouble(value);
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private Double readDouble(JsonNode objectNode, String fieldName) {
+        JsonNode value = objectNode.path(fieldName);
+        if (value.isMissingNode() || value.isNull()) {
+            return null;
+        }
+        String text = value.asText();
+        if (text == null || text.isBlank() || "-".equals(text)) {
+            return null;
+        }
+        try {
+            return Double.parseDouble(text);
         } catch (NumberFormatException exception) {
             return null;
         }
@@ -325,8 +400,21 @@ public class StockQuoteSyncService {
             String code,
             Double latestPrice,
             Double changePercent,
-            Double totalMarketValue
+            TongHuaShunQuote tongHuaShunQuote
     ) {
+    }
+
+    record TongHuaShunQuote(
+            Double volume,
+            Double amount,
+            Double turnoverRate,
+            Double totalMarketValue,
+            Double circulatingMarketValue,
+            Double dynamicPeRatio
+    ) {
+        static TongHuaShunQuote empty() {
+            return new TongHuaShunQuote(null, null, null, null, null, null);
+        }
     }
 
     private static class ProgressState {

@@ -16,17 +16,24 @@ public class WatchlistStockDto {
     String name;
     Double latestPrice;
     Double changePercent;
+    Double volume;
+    Double amount;
+    Double turnoverRate;
     Double totalMarketValue;
+    Double circulatingMarketValue;
+    Double dynamicPeRatio;
     String market;
     String exchangeCode;
     String industry;
     List<String> concepts;
+    String primaryConcept;
     String boardType;
     String listDate;
     LocalDateTime addedAt;
 
     public static WatchlistStockDto fromEntity(WatchlistGroupStock watchlistGroupStock) {
         Stock stock = watchlistGroupStock.getStock();
+        List<String> concepts = StockDto.normalizeConcepts(stock.getConcepts());
 
         return WatchlistStockDto.builder()
                 .id(stock.getId())
@@ -34,11 +41,17 @@ public class WatchlistStockDto {
                 .name(stock.getName())
                 .latestPrice(stock.getLatestPrice())
                 .changePercent(stock.getChangePercent())
+                .volume(stock.getVolume())
+                .amount(stock.getAmount())
+                .turnoverRate(stock.getTurnoverRate())
                 .totalMarketValue(stock.getTotalMarketValue())
+                .circulatingMarketValue(stock.getCirculatingMarketValue())
+                .dynamicPeRatio(stock.getDynamicPeRatio())
                 .market(stock.getMarket())
                 .exchangeCode(stock.getExchangeCode())
                 .industry(stock.getIndustry())
-                .concepts(List.copyOf(stock.getConcepts()))
+                .concepts(concepts)
+                .primaryConcept(StockDto.primaryConcept(concepts))
                 .boardType(stock.getBoardType())
                 .listDate(stock.getListDate())
                 .addedAt(watchlistGroupStock.getAddedAt())

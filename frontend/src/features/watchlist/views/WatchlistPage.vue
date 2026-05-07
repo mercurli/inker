@@ -6,6 +6,7 @@ import PanelCard from '@/shared/components/layout/PanelCard.vue'
 import SectionHeader from '@/shared/components/layout/SectionHeader.vue'
 import PriceChangeChip from '@/shared/components/display/PriceChangeChip.vue'
 import ConceptChipGroup from '@/shared/components/display/ConceptChipGroup.vue'
+import BoardTag from '@/shared/components/display/BoardTag.vue'
 import EmptyState from '@/shared/components/feedback/EmptyState.vue'
 
 const router = useRouter()
@@ -27,6 +28,8 @@ const switchGroupOptions = computed(() => {
 
   return store.watchlistGroups.value.filter((group) => group.id !== store.activeWatchlistGroupId.value)
 })
+
+const activeIndustryCountEntries = computed(() => Object.entries(store.activeWatchlistGroup.value?.industryCounts ?? {}))
 
 watch(
   () => store.activeWatchlistGroup.value?.name,
@@ -151,8 +154,10 @@ watch(() => store.watchlist.value.length, closeSwitchGroupMenu)
           <button v-for="group in store.watchlistGroups.value" :key="group.id" class="group-tab"
             :class="{ 'group-tab--active': group.id === store.activeWatchlistGroupId.value }" type="button"
             @click="chooseGroup(group.id)">
-            <span>{{ group.name }}</span>
-            <span class="group-tab-count">{{ group.stockCount }}</span>
+            <span class="group-tab-main">
+              <span class="group-tab-name">{{ group.name }}</span>
+              <span class="group-tab-count">{{ group.stockCount }}</span>
+            </span>
           </button>
         </div>
         <div class="group-actions">
@@ -193,30 +198,46 @@ watch(() => store.watchlist.value.length, closeSwitchGroupMenu)
     <EmptyState v-else-if="store.watchlist.value.length === 0" message="当前分组没有股票，去选股列表添加，或把其他分组股票加入到这里。" />
 
     <div v-else class="watchlist-list">
+      <div class="watchlist-industry-summary">
+        <span v-for="[industry, count] in activeIndustryCountEntries" :key="industry" class="group-industry-chip">
+          {{ industry }} {{ count }}
+        </span>
+        <span v-if="activeIndustryCountEntries.length === 0" class="group-industry-empty">暂无行业</span>
+      </div>
+      <div class="watchlist-table">
+        <div class="watchlist-row watchlist-table-header" role="row">
+          <div>股票</div>
+          <div class="watchlist-cell--right">最新价</div>
+          <div>涨跌幅</div>
+          <div>板块</div>
+          <div>行业</div>
+          <div>概念</div>
+          <div class="watchlist-cell--center">操作</div>
+        </div>
       <article v-for="stock in store.watchlist.value" :key="stock.id" class="watchlist-item"
         @contextmenu="openSwitchGroupMenu($event, stock.id)">
-        <div class="watchlist-main flex item-center">
-          <div class="watchlist-item-head pointer" @click="openDetail(stock.id)">
+          <button class="watchlist-stock-cell pointer" type="button" @click="openDetail(stock.id)">
             <div class="watchlist-item-name">{{ stock.name }}</div>
             <div class="flex item-center">
               <div class="watchlist-item-market">{{ stock.market }}</div>
               <div class="watchlist-item-symbol">{{ stock.symbol }}</div>
             </div>
-          </div>
+          </button>
           <div class="watchlist-item-stats">
             <strong class="stat-value">{{ store.formatPrice(stock.latestPrice) }}</strong>
           </div>
           <PriceChangeChip :tone="store.changeClass(stock.changePercent)"
             :value="store.formatPercent(stock.changePercent)" />
-          <div>
-            <span v-if="stock.boardType" class="meta-chip">{{ stock.boardType }}</span>
+          <div class="watchlist-cell">
+            <BoardTag :label="stock.boardType || '--'" :variant="store.boardClass(stock.boardType)" />
           </div>
-          <div>
+          <div class="watchlist-cell watchlist-cell--text" :title="stock.industry || '未分类行业'">
             <span>{{ stock.industry || '未分类行业' }}</span>
           </div>
 
-          <ConceptChipGroup :concepts="stock.concepts" :max="10" />
-        </div>
+          <div class="watchlist-cell watchlist-cell--concepts">
+            <ConceptChipGroup :concepts="stock.concepts" :primary-concept="stock.primaryConcept" :max="1" />
+          </div>
 
         <div class="item-actions">
           <button class="btn btn-icon watchlist-remove-btn" type="button" aria-label="取消关注" title="取消关注"
@@ -228,6 +249,7 @@ watch(() => store.watchlist.value.length, closeSwitchGroupMenu)
           </button>
         </div>
       </article>
+      </div>
     </div>
 
     <template v-if="showSwitchGroupMenu">
@@ -248,45 +270,195 @@ watch(() => store.watchlist.value.length, closeSwitchGroupMenu)
 <style scoped>
 .group-tabs {
   display: flex;
-  align-items: center;
-  gap: 0;
+  align-items: stretch;
+  gap: var(--space-2);
   margin-top: 12px;
-  border-bottom: 1px solid #d1d5db;
   overflow-x: auto;
-  white-space: nowrap;
+  padding-bottom: var(--space-1);
 }
 
 .group-tab {
   position: relative;
-  height: 46px;
-  padding: 0 20px;
-  border: 0;
-  background: transparent;
-  color: #111827;
+  min-width: 180px;
+  max-width: 240px;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
   display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: var(--space-2);
   flex: 0 0 auto;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .group-tab--active {
-  color: #2563eb;
+  border-color: var(--primary-500);
+  color: var(--primary-600);
+  background: #f4f9ff;
 }
 
-.group-tab--active::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: #2563eb;
+.group-tab-main {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.group-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-semibold);
 }
 
 .group-tab-count {
-  font-size: 0.8rem;
-  color: #6b7280;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--bg-soft);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.watchlist-industry-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  min-height: 30px;
+  padding: 0 var(--space-1);
+}
+
+.group-industry-chip,
+.group-industry-empty {
+  max-width: 92px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.group-industry-chip {
+  border: 1px solid #dbe7ff;
+  background: #eef4ff;
+  color: #3730a3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group-industry-empty {
+  color: var(--text-muted);
+}
+
+.watchlist-list {
+  overflow-x: auto;
+}
+
+.watchlist-table {
+  min-width: 900px;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.watchlist-row,
+.watchlist-item {
+  display: grid;
+  grid-template-columns: 160px 110px 96px 90px 120px minmax(0, 1fr) 44px;
+  align-items: center;
+  column-gap: var(--space-4);
+}
+
+.watchlist-table-header {
+  padding: 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+}
+
+.watchlist-item {
+  min-width: 900px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: linear-gradient(160deg, var(--bg-surface) 0%, #fafcff 100%);
+  transition: var(--transition-fast);
+}
+
+.watchlist-item:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-hover);
+}
+
+.watchlist-stock-cell {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  text-align: left;
+}
+
+.watchlist-cell,
+.watchlist-item-stats,
+.item-actions {
+  min-width: 0;
+}
+
+.watchlist-cell--right,
+.watchlist-item-stats {
+  text-align: right;
+  justify-items: end;
+}
+
+.watchlist-cell--center,
+.item-actions {
+  justify-content: center;
+}
+
+.watchlist-cell--text,
+.watchlist-cell--concepts {
+  overflow: hidden;
+}
+
+.watchlist-cell--text span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-cell--concepts :deep(.concept-chip-group) {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.watchlist-cell--concepts :deep(.concept-chip) {
+  max-width: 104px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-muted {
+  color: var(--text-muted);
 }
 
 .watchlist-remove-btn {

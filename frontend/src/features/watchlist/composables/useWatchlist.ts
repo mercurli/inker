@@ -21,6 +21,7 @@ export function useWatchlist() {
     formatPrice: store.formatPrice,
     formatPercent: store.formatPercent,
     formatDate: store.formatDate,
-    changeClass: store.changeClass
+    changeClass: store.changeClass,
+    boardClass: store.boardClass
   }
 }

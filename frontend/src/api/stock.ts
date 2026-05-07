@@ -6,11 +6,17 @@ export interface Stock {
   name: string
   latestPrice: number | null
   changePercent: number | null
+  volume: number | null
+  amount: number | null
+  turnoverRate: number | null
   totalMarketValue: number | null
+  circulatingMarketValue: number | null
+  dynamicPeRatio: number | null
   market: string
   exchangeCode?: string
   industry?: string
   concepts: string[]
+  primaryConcept?: string | null
   boardType?: string
   listDate?: string
 }
@@ -38,6 +44,7 @@ export interface WatchlistGroup {
   default: boolean
   sortOrder: number
   stockCount: number
+  industryCounts: Record<string, number>
 }
 
 export interface WatchlistStock extends Stock {
@@ -52,7 +59,7 @@ export interface StockQueryParams {
   concept?: string
   page?: number
   size?: number
-  sortBy?: 'code' | 'name' | 'exchangeCode' | 'market' | 'industry' | 'listDate' | 'id' | 'latestPrice' | 'changePercent' | 'totalMarketValue' | 'boardType'
+  sortBy?: 'code' | 'name' | 'exchangeCode' | 'market' | 'industry' | 'listDate' | 'id' | 'latestPrice' | 'changePercent' | 'amount' | 'turnoverRate' | 'totalMarketValue' | 'dynamicPeRatio' | 'boardType'
   sortDirection?: 'ASC' | 'DESC'
 }
 
@@ -100,9 +107,14 @@ export interface UpdateWatchlistGroupRequest {
   sortOrder?: number
 }
 
+export interface UpdateStockConceptsRequest {
+  concepts: string[]
+}
+
 export const stockApi = {
   getStocks: (params?: StockQueryParams) => http.get<PageResponse<Stock>>('/stocks', { params }),
   getStock: (id: number) => http.get<Stock>(`/stocks/${id}`),
+  updateStockConcepts: (id: number, payload: UpdateStockConceptsRequest) => http.patch<Stock>(`/stocks/${id}/concepts`, payload),
   getDailyKLine: (id: number, limit = 60) => http.get<StockDailyKLine>(`/stocks/${id}/daily-k-line`, { params: { limit } }),
   getIndustries: () => http.get<string[]>('/stocks/industries'),
   getConcepts: () => http.get<string[]>('/stocks/concepts'),

@@ -15,16 +15,48 @@ export function formatPercent(pct: number | null) {
   return `${sign}${pct.toFixed(2)}%`
 }
 
-export function formatMarketValue(value: number | null) {
+export function formatAmount(value: number | null) {
+  if (value == null) {
+    return '0'
+  }
+
+  if (Math.abs(value) >= 100000000) {
+    return `${(value / 100000000).toFixed(2)}亿`
+  }
+
+  return `${(value / 10000).toFixed(2)}万`
+}
+
+export function formatVolume(value: number | null) {
   if (value == null) {
     return '--'
   }
 
-  if (Math.abs(value) >= 10000) {
-    return `${(value / 10000).toFixed(2)}亿`
+  if (Math.abs(value) >= 100000000) {
+    return `${(value / 100000000).toFixed(2)}亿股`
   }
 
-  return `${value.toFixed(0)}万`
+  return `${(value / 10000).toFixed(2)}万股`
+}
+
+export function formatMarketValue(value: number | null) {
+  return formatAmount(value)
+}
+
+export function formatTurnoverRate(value: number | null) {
+  if (value == null) {
+    return '--'
+  }
+
+  return `${value.toFixed(2)}%`
+}
+
+export function formatPeRatio(value: number | null) {
+  if (value == null) {
+    return '--'
+  }
+
+  return `${value.toFixed(2)}倍`
 }
 
 export function formatDate(value: string | undefined) {

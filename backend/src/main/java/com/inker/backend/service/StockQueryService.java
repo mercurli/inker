@@ -2,6 +2,7 @@ package com.inker.backend.service;
 
 import com.inker.backend.dto.MarketSummaryDto;
 import com.inker.backend.dto.StockDto;
+import com.inker.backend.dto.UpdateStockConceptsRequest;
 import com.inker.backend.entity.Stock;
 import com.inker.backend.repository.StockRepository;
 import org.springframework.data.domain.Page;
@@ -10,12 +11,22 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class StockQueryService {
+
+    private static final Set<String> NULLS_LAST_SORT_FIELDS = Set.of(
+            "amount",
+            "turnoverRate",
+            "totalMarketValue",
+            "dynamicPeRatio"
+    );
 
     private final StockRepository stockRepository;
 
@@ -39,7 +50,8 @@ public class StockQueryService {
         String normalizedConcept = normalize(concept);
         String normalizedSortBy = normalizeSortBy(sortBy);
         Sort.Direction direction = "DESC".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC;
-        Pageable pageable = PageRequest.of(page, size, Sort.by(direction, normalizedSortBy));
+        boolean nullsLastSort = NULLS_LAST_SORT_FIELDS.contains(normalizedSortBy);
+        Pageable pageable = PageRequest.of(page, size, nullsLastSort ? Sort.unsorted() : buildSort(normalizedSortBy, direction));
 
         Specification<Stock> specification = Specification
                 .where(byKeyword(normalizedKeyword))
@@ -48,12 +60,27 @@ public class StockQueryService {
                 .and(byIndustry(normalizedIndustry))
                 .and(byConcept(normalizedConcept));
 
+        if (nullsLastSort) {
+            specification = specification.and(orderByNullsLast(normalizedSortBy, direction));
+        }
+
         return stockRepository.findAll(specification, pageable)
                 .map(StockDto::fromEntity);
     }
 
     public Optional<StockDto> getById(Long id) {
         return stockRepository.findById(id).map(StockDto::fromEntity);
+    }
+
+    @Transactional
+    public StockDto updateConcepts(Long id, UpdateStockConceptsRequest request) {
+        Stock stock = stockRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Stock not found, id=" + id));
+        List<String> concepts = StockDto.normalizeConcepts(request.getConcepts());
+
+        stock.setConcepts(concepts);
+        stock.setConceptsManuallyEdited(true);
+        return StockDto.fromEntity(stockRepository.save(stock));
     }
 
     public List<String> getAllIndustries() {
@@ -183,8 +210,30 @@ public class StockQueryService {
             return "code";
         }
         return switch (sortBy) {
-            case "name", "exchangeCode", "market", "industry", "listDate", "id", "latestPrice", "changePercent", "totalMarketValue", "boardType" -> sortBy;
+            case "name", "exchangeCode", "market", "industry", "listDate", "id", "latestPrice", "changePercent",
+                    "amount", "turnoverRate", "totalMarketValue", "dynamicPeRatio", "boardType" -> sortBy;
             default -> "code";
+        };
+    }
+
+    private Sort buildSort(String sortBy, Sort.Direction direction) {
+        return Sort.by(Sort.Order.by(sortBy).with(direction));
+    }
+
+    private Specification<Stock> orderByNullsLast(String sortBy, Sort.Direction direction) {
+        return (root, query, cb) -> {
+            if (query.getResultType() != Long.class && query.getResultType() != long.class) {
+                var nullRank = cb.selectCase()
+                        .when(cb.isNull(root.get(sortBy)), 1)
+                        .otherwise(0);
+
+                query.orderBy(
+                        cb.asc(nullRank),
+                        direction == Sort.Direction.DESC ? cb.desc(root.get(sortBy)) : cb.asc(root.get(sortBy))
+                );
+            }
+
+            return null;
         };
     }
 }

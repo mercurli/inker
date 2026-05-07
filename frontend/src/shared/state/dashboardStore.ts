@@ -10,7 +10,7 @@ import {
   type WatchlistGroup,
   type WatchlistStock
 } from '@/api/stock'
-import { formatDate, formatMarketValue, formatPercent, formatPrice, toneByPercent } from '@/shared/lib/formatters'
+import { formatAmount, formatDate, formatMarketValue, formatPeRatio, formatPercent, formatPrice, formatTurnoverRate, formatVolume, toneByPercent } from '@/shared/lib/formatters'
 import type { TrendTone } from '@/shared/types/common'
 
 export interface WatchlistItem extends WatchlistStock {}
@@ -154,9 +154,14 @@ const priceChangeDistribution = computed(() => {
 })
 
 function normalizeStock(stock: Stock): Stock {
+  const concepts = Array.isArray(stock.concepts)
+    ? Array.from(new Set(stock.concepts.map((item) => item.trim()).filter(Boolean)))
+    : []
+
   return {
     ...stock,
-    concepts: Array.isArray(stock.concepts) ? stock.concepts : []
+    concepts,
+    primaryConcept: stock.primaryConcept ?? concepts[0] ?? null
   }
 }
 
@@ -264,8 +269,49 @@ function syncWatchlist(items: Stock[]) {
   })
 }
 
+function mergeConceptOptions(nextConcepts: string[]) {
+  const conceptSet = new Set(concepts.value)
+
+  nextConcepts.forEach((item) => {
+    const trimmed = item.trim()
+
+    if (trimmed) {
+      conceptSet.add(trimmed)
+    }
+  })
+
+  concepts.value = Array.from(conceptSet).sort((left, right) => left.localeCompare(right))
+}
+
+function syncStockState(stock: Stock) {
+  const normalizedStock = normalizeStock(stock)
+
+  stocks.value = stocks.value.map((item) => (item.id === normalizedStock.id ? normalizedStock : item))
+
+  if (selectedStockId.value === normalizedStock.id || selectedStock.value?.id === normalizedStock.id) {
+    selectedStockId.value = normalizedStock.id
+    selectedStock.value = normalizedStock
+  }
+
+  syncWatchlist([normalizedStock])
+  mergeConceptOptions(normalizedStock.concepts)
+}
+
 function isInWatchlist(stockId: number) {
   return watchlistIds.value.has(stockId)
+}
+
+async function updateStockConcepts(stockId: number, nextConcepts: string[]) {
+  try {
+    const response = await stockApi.updateStockConcepts(stockId, { concepts: nextConcepts })
+    const normalizedStock = normalizeStock(response.data)
+
+    syncStockState(normalizedStock)
+    await fetchConcepts()
+    return normalizedStock
+  } catch {
+    throw new Error('Failed to update stock concepts')
+  }
 }
 
 async function toggleWatchlist(stock: Stock) {
@@ -750,6 +796,7 @@ export function useDashboardStore() {
     sortIndicator,
     goToPage,
     loadDetailById,
+    updateStockConcepts,
     toggleWatchlist,
     removeFromWatchlist,
     removeFromActiveGroup,
@@ -762,7 +809,11 @@ export function useDashboardStore() {
     isInWatchlist,
     formatPrice,
     formatPercent,
+    formatAmount,
+    formatVolume,
     formatMarketValue,
+    formatTurnoverRate,
+    formatPeRatio,
     formatDate,
     changeClass: toneByPercent as (value: number | null) => TrendTone,
     boardClass,
