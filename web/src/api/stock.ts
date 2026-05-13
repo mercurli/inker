@@ -88,6 +88,8 @@ export interface QuoteSyncResult {
   matched: number
   updated: number
   skippedMissing: number
+  fiveDayBaselineTradeDate: string | null
+  fiveDayBaselineCount: number
 }
 
 export interface QuoteSyncProgress {
@@ -99,6 +101,8 @@ export interface QuoteSyncProgress {
   matched: number
   updated: number
   skippedMissing: number
+  fiveDayBaselineTradeDate: string | null
+  fiveDayBaselineCount: number
   result?: QuoteSyncResult
 }
 

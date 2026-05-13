@@ -656,7 +656,9 @@ function handleQuoteSyncProgress(event: MessageEvent<string>) {
       fetched: progress.fetched,
       matched: progress.matched,
       updated: progress.updated,
-      skippedMissing: progress.skippedMissing
+      skippedMissing: progress.skippedMissing,
+      fiveDayBaselineTradeDate: progress.fiveDayBaselineTradeDate,
+      fiveDayBaselineCount: progress.fiveDayBaselineCount
     }
     quoteSyncMessage.value = `行情同步完成：抓取 ${progress.fetched} 条，匹配 ${progress.matched} 条，更新 ${progress.updated} 条。`
     quoteSyncing.value = false
@@ -689,13 +691,15 @@ function syncQuotesWithProgress() {
     fetched: 0,
     matched: 0,
     updated: 0,
-    skippedMissing: 0
+    skippedMissing: 0,
+    fiveDayBaselineTradeDate: null,
+    fiveDayBaselineCount: 0
   }
 
   const source = new EventSource(stockApi.quoteSyncStreamUrl())
   quoteSyncSource = source
 
-  ;['starting', 'resolving_trade_date', 'fetching_quotes', 'matching', 'saving', 'completed', 'failed'].forEach((eventName) => {
+  ;['starting', 'resolving_trade_date', 'fetching_quotes', 'fetching_history', 'matching', 'saving', 'completed', 'failed'].forEach((eventName) => {
     source.addEventListener(eventName, (event) => handleQuoteSyncProgress(event as MessageEvent<string>))
   })
 

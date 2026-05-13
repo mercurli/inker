@@ -14,5 +14,7 @@ public class QuoteSyncProgressDto {
     int matched;
     int updated;
     int skippedMissing;
+    String fiveDayBaselineTradeDate;
+    int fiveDayBaselineCount;
     QuoteSyncResultDto result;
 }

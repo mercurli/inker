@@ -102,8 +102,10 @@ public class StockQuoteSyncService {
         progress.emit("fetching_quotes", 40, "已获取 " + quotes.size() + " 条行情");
 
         progress.emit("fetching_history", 42, "正在计算 5 日涨跌幅");
-        Map<String, Double> fiveDayBaselineCloseByCode = fetchFiveDayBaselineCloses(tradeDate, quotes);
-        progress.emit("fetching_history", 45, "已计算 5 日涨跌幅基准");
+        FiveDayBaseline fiveDayBaseline = fetchFiveDayBaselineCloses(tradeDate, quotes);
+        progress.fiveDayBaselineTradeDate = fiveDayBaseline.tradeDate();
+        progress.fiveDayBaselineCount = fiveDayBaseline.closesByCode().size();
+        progress.emit("fetching_history", 45, buildFiveDayBaselineMessage(fiveDayBaseline));
 
         progress.emit("matching", 50, "正在加载本地股票");
         Map<String, Stock> stockByCode = new HashMap<>();
@@ -134,7 +136,7 @@ public class StockQuoteSyncService {
                 }
                 Double fiveDayChangePercent = calculateFiveDayChangePercent(
                         quote.latestPrice(),
-                        fiveDayBaselineCloseByCode.get(quote.code())
+                        fiveDayBaseline.closesByCode().get(quote.code())
                 );
                 if (!sameDouble(stock.getFiveDayChangePercent(), fiveDayChangePercent)) {
                     stock.setFiveDayChangePercent(fiveDayChangePercent);
@@ -174,19 +176,21 @@ public class StockQuoteSyncService {
                 .matched(progress.matched)
                 .updated(progress.updated)
                 .skippedMissing(progress.skippedMissing)
+                .fiveDayBaselineTradeDate(progress.fiveDayBaselineTradeDate)
+                .fiveDayBaselineCount(progress.fiveDayBaselineCount)
                 .build();
         progress.emitCompleted(result);
         return result;
     }
 
-    private Map<String, Double> fetchFiveDayBaselineCloses(String tradeDate, List<TushareQuote> quotes) {
+    private FiveDayBaseline fetchFiveDayBaselineCloses(String tradeDate, List<TushareQuote> quotes) {
         if (quotes.isEmpty()) {
-            return Map.of();
+            return FiveDayBaseline.empty();
         }
 
         String baselineTradeDate = fetchFiveDayBaselineTradeDate(tradeDate);
         if (baselineTradeDate == null) {
-            return Map.of();
+            return FiveDayBaseline.empty();
         }
 
         JsonNode data = callTushare(
@@ -198,7 +202,7 @@ public class StockQuoteSyncService {
         JsonNode itemsNode = data.path("items");
         if (!itemsNode.isArray() || itemsNode.isEmpty()) {
             log.warn("Tushare daily API returned empty baseline data for 5-day change. baselineTradeDate={}", baselineTradeDate);
-            return Map.of();
+            return new FiveDayBaseline(baselineTradeDate, Map.of());
         }
 
         Map<String, Double> baselineCloseByCode = new HashMap<>();
@@ -214,7 +218,14 @@ public class StockQuoteSyncService {
             }
         }
 
-        return baselineCloseByCode;
+        return new FiveDayBaseline(baselineTradeDate, baselineCloseByCode);
+    }
+
+    private String buildFiveDayBaselineMessage(FiveDayBaseline baseline) {
+        if (baseline.tradeDate() == null) {
+            return "未找到 5 日涨跌幅基准交易日";
+        }
+        return "已获取 " + baseline.tradeDate() + " 的 5 日涨跌幅基准价 " + baseline.closesByCode().size() + " 条";
     }
 
     private String fetchFiveDayBaselineTradeDate(String tradeDate) {
@@ -520,6 +531,15 @@ public class StockQuoteSyncService {
     ) {
     }
 
+    private record FiveDayBaseline(
+            String tradeDate,
+            Map<String, Double> closesByCode
+    ) {
+        private static FiveDayBaseline empty() {
+            return new FiveDayBaseline(null, Map.of());
+        }
+    }
+
     record TongHuaShunQuote(
             Double volume,
             Double amount,
@@ -540,6 +560,8 @@ public class StockQuoteSyncService {
         private int matched;
         private int updated;
         private int skippedMissing;
+        private String fiveDayBaselineTradeDate;
+        private int fiveDayBaselineCount;
 
         private ProgressState(Consumer<QuoteSyncProgressDto> consumer) {
             this.consumer = consumer == null ? ignored -> {
@@ -556,6 +578,8 @@ public class StockQuoteSyncService {
                     .matched(matched)
                     .updated(updated)
                     .skippedMissing(skippedMissing)
+                    .fiveDayBaselineTradeDate(fiveDayBaselineTradeDate)
+                    .fiveDayBaselineCount(fiveDayBaselineCount)
                     .build());
         }
 
@@ -569,6 +593,8 @@ public class StockQuoteSyncService {
                     .matched(matched)
                     .updated(updated)
                     .skippedMissing(skippedMissing)
+                    .fiveDayBaselineTradeDate(fiveDayBaselineTradeDate)
+                    .fiveDayBaselineCount(fiveDayBaselineCount)
                     .result(result)
                     .build());
         }
