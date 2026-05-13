@@ -1,220 +1,72 @@
-# AGENTS.md - Development Guidelines for Inker
+# AGENTS.md
 
-## Project Overview
-- **Project Name**: Inker (研墨)
-- **Type**: Full-stack web application (Vue/Vite frontend + Java/SpringBoot backend)
+## 1. 项目概述
+Inker（研墨）是一个股票分析与追踪工具。
 
----
+- 后端：Java 17、Spring Boot 3.2、Spring Data JPA。
+- 前端：Vue 3、Vite、TypeScript、Vue Router。
+- 当前主要能力：市场总览、股票列表、个股详情、自选追踪、行情同步
 
-## Build Commands
-
-### Frontend (Vue/Vite)
+## 2. 快速命令
 ```bash
-# Install dependencies
-npm install
+# 启动后端，默认 http://localhost:8081
+cd server && mvn spring-boot:run
 
-# Start development server
-npm run dev
+# 后端测试
+cd server && mvn test
 
-# Build for production
-npm run build
+# 启动前端，默认由 Vite 分配本地端口
+cd web && npm run dev
 
-# Preview production build
-npm run preview
-
-# Run linting
-npm run lint
-
-# Run type checking
-npm run type-check
+# 前端类型检查与构建
+cd web && npm run build
 ```
 
-### Backend (Java/SpringBoot)
-```bash
-# Build the project
-./mvnw clean package
+## 3. 后端架构
+后端位于 `server/`，包名根路径为 `com.inker.backend`。
 
-# Run the application
-./mvnw spring-boot:run
+- `controller`：REST API，统一使用 `/api/v1` 前缀。
+- `service`：业务逻辑，如股票查询、行情同步、自选分组。
+- `repository`：Spring Data JPA 数据访问。
+- `entity`：数据库实体。
+- `dto`：接口入参与返回模型。
+- `config` / `scheduler` / `provider`：分别承载配置、定时任务、外部数据源适配。
 
-# Run tests
-./mvnw test
+## 4. 前端架构
+前端位于 `web/`，入口为 `src/main.ts`。
 
-# Run a single test class
-./mvnw test -Dtest=TestClassName
+- `src/app`：应用壳与路由。
+- `src/features`：按业务模块组织页面、组合式函数等。
+- `src/shared`：通用 API、组件、样式、状态、类型与工具函数。
+- 当前路由：市场总览、选股列表、个股详情、自选追踪。
+- 后端请求统一从 `src/shared/api/http.ts` 的 Axios 实例发起。
 
-# Run a single test method
-./mvnw test -Dtest=TestClassName#testMethodName
-```
+## 5. 关键约定
+- 优先沿用现有分层、命名和目录结构。
+- 新增后端接口时保持 Controller → Service → Repository 的调用方向。
+- 新增前端页面或能力时优先放入对应 `features` 模块，可复用内容放入 `shared`。
+- UI 样式优先复用 `web/src/shared/styles` 与 `docs/design.md` 中的设计 token。
+- 不提交 `target/`、`dist/`、`node_modules/`、本地日志、临时文件和本地数据库文件。
 
----
+## 6. 本地开发及验证流程
+1. 启动后端：`cd server && mvn spring-boot:run`。
+2. 启动前端：`cd web && npm run dev`。
+3. 前端通过 `http://localhost:8081/api/v1` 访问后端。
+4. 涉及接口变更时，同时检查前端 API 封装、DTO、页面调用链。
 
-## Running Single Tests
+## 7. 质量检查
+- 后端改动后优先运行：`cd server && mvn test`。
+- 前端改动后优先运行：`cd web && npm run build`。
+- 文档改动可人工检查标题层级、路径、命令是否与实际目录一致。
+- 避免在无关文件中做格式化或重构。
 
-### Frontend (Vitest)
-```bash
-# Run a single test file
-npm run test -- tests/unit/MyComponent.test.ts
+## 8. 参考项目约定
+暂无参考项目。
 
-# Run tests matching a pattern
-npm run test -- --grep "pattern"
-
-# Run in watch mode
-npm run test -- --watch
-```
-
-### Backend (JUnit)
-```bash
-# Single test class
-./mvnw test -Dtest=MyServiceTest
-
-# Single test method
-./mvnw test -Dtest=MyServiceTest#testMethodName
-```
-
----
-
-## UI 设计规范（基于 ui.webp）
-
-> 适用范围：Inker Web 前端 Dashboard 类页面。  
-> 目标：统一视觉风格与交互层级，保证不同模块实现后仍保持一致观感。
-
-### 1. 视觉基调
-- 页面背景使用浅灰色，卡片使用白色，形成弱对比的分层关系。
-- 边框保持低对比、细描边；阴影轻量，避免重投影。
-- 主操作色使用清晰蓝色，仅用于关键 CTA（如“转账/确认/主提交”）。
-- 信息层级遵循：标题深色 > 正文中灰 > 辅助信息浅灰。
-
-### 2. 布局系统
-- 整体结构固定为：左侧导航栏 + 顶部工具栏 + 主内容区。
-- 页面外层容器最大宽度建议 `1280px`，居中显示，左右内边距 `24px`。
-- 左侧导航宽度 `72px`，顶部工具栏高度 `64px`。
-- 主内容区采用 3 列网格：
-  - 左列：约 `30%`
-  - 中列：约 `34%`
-  - 右列：约 `36%`
-- 卡片之间统一间距 `16px`，同一列垂直间距也为 `16px`。
-
-### 3. 设计 Tokens（工程可用）
-
-```css
-:root {
-  /* Colors */
-  --bg-page: #ffffff;
-  --bg-surface: #ffffff;
-  --bg-soft: #f8fafc;
-  --text-primary: #111827;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
-  --border-default: #e5e7eb;
-  --border-soft: #eef1f4;
-  --primary-500: #1d9bf0;
-  --primary-600: #0284e6;
-  --success-500: #16a34a;
-  --danger-500: #ef4444;
-
-  /* Radius */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-pill: 999px;
-
-  /* Shadow */
-  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-pop: 0 8px 24px rgba(16, 24, 40, 0.10);
-
-  /* Spacing */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-
-  /* Typography */
-  --font-family-base: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-size-xs: 12px;
-  --font-size-sm: 13px;
-  --font-size-md: 14px;
-  --font-size-lg: 18px;
-  --font-size-xl: 40px;
-  --line-height-tight: 1.2;
-  --line-height-base: 1.5;
-
-  /* Components */
-  --btn-height-sm: 30px;
-  --btn-height-md: 36px;
-  --btn-height-lg: 40px;
-}
-```
-
-### 4. 核心组件规范
-
-#### 4.1 左侧导航栏
-- 宽度固定 `72px`，图标按钮使用圆角矩形，尺寸 `40x40`。
-- 默认图标使用中灰色；选中项背景为主色，图标为白色。
-- 导航项垂直间距 `12px`，顶部与底部保留 `16px` 安全间距。
-
-#### 4.2 顶部工具栏
-- 高度 `64px`，左右内边距 `20px`。
-- 搜索框高度 `36px`，圆角 `999px`，边框 `1px solid var(--border-default)`。
-- 右上角用户信息块与图标按钮高度与输入控件保持一致。
-
-#### 4.3 统计总览区（大数字卡片）
-- 主数值字体建议 `40px/700`，金额小数和单位使用较小字号并弱化颜色。
-- 次级描述（如 last transaction）使用 `13px`，正向变化使用 `--primary-500` 或 `--success-500`。
-- 主操作按钮组采用“次级按钮 + 文本按钮 + 主按钮”层级。
-
-#### 4.4 通用卡片
-- 卡片背景 `var(--bg-surface)`，圆角 `var(--radius-md)`，描边 `1px solid var(--border-soft)`。
-- 内边距 `16px`，标题与内容间距 `12px`。
-- 卡片标题 `14px/600`，辅助说明 `12px` 且颜色 `var(--text-muted)`。
-
-#### 4.5 图表卡（Activities）
-- 折线图线宽建议 `2px`，主线为低饱和蓝。
-- 鼠标悬停点显示数据浮层，浮层圆角 `8px`，阴影 `var(--shadow-pop)`。
-- X 轴刻度标签使用 `12px`，颜色 `var(--text-muted)`。
-
-#### 4.6 交易列表卡（Recent Transaction）
-- 列表行最小高度 `52px`，行间以浅分割线区分。
-- 左侧头像/图标容器尺寸 `28x28`，名称与时间两行排布。
-- 金额右对齐，收入为深色或绿色，支出为红色。
-
-#### 4.7 钱包卡（Saving Wallet）
-- 金额与“Total Saving”采用上下结构，金额为主视觉。
-- 底部分类图标按钮保持统一尺寸（建议 `44x44`），图标下方可加简短标签。
-- 同一卡片内按钮样式保持统一，避免混用不同圆角与阴影。
-
-#### 4.8 按钮系统
-- 主按钮：`background: var(--primary-500)`，白字，hover 使用 `--primary-600`。
-- 次按钮：白底描边，文字 `--text-primary`。
-- 文字按钮：无底色，hover 时出现 `--bg-soft` 背景。
-- 按钮横向最小内边距 `12px`，图标与文字间距 `6px`。
-
-### 5. 状态规范
-- 默认态：静态展示，不额外强调边框与阴影。
-- 悬停态（Hover）：
-  - 卡片提升为 `--shadow-pop` 的弱化版本（建议不超过 `0 4px 12px`）。
-  - 可点击列表行背景切换为 `--bg-soft`。
-- 激活态（Active）：
-  - 导航选中项显示主色背景。
-  - 按钮按下时亮度降低约 `4%`。
-- 禁用态（Disabled）：
-  - 元素透明度建议 `0.45`。
-  - 禁用点击与 pointer 事件，不可出现 hover 效果。
-
-### 6. 响应式规则
-- 桌面端（`>=1200px`）：保持 3 列布局。
-- 平板端（`768px ~ 1199px`）：切换为 2 列布局，右侧交易列表下移。
-- 移动端（`<768px`）：
-  - 主内容区改为单列堆叠。
-  - 左侧导航切换为底部 Tab 或抽屉菜单。
-  - 顶部搜索可折叠为图标触发。
-- 响应式下卡片内边距允许从 `16px` 降为 `12px`，但不得小于 `12px`。
-
-### 7. 实现约束
-- 前端样式实现优先使用 CSS 变量（Design Tokens）或 Tailwind Token 映射，禁止硬编码重复色值。
-- 新增 Dashboard 页面必须复用统一卡片结构、按钮层级和标题字号，避免模块间视觉漂移。
-- 图表、列表、金融数据卡必须遵循统一留白节奏（12/16/24）与标题区样式。
-- 若业务页面存在特殊视觉需求，必须在 PR 描述中说明偏离原因，并给出对齐策略。
+## 9. 文档导航
+| 文档 | 用途 |
+| --- | --- |
+| `docs/design.md` | 前端设计规范与设计 token |
+| `server/pom.xml` | 后端依赖、Java/Spring Boot 版本与 Maven 配置 |
+| `web/package.json` | 前端依赖与 npm scripts |
+| `server/src/main/resources/application.yml` | 后端端口、数据源与外部服务配置 |
