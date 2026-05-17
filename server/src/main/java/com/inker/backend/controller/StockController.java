@@ -75,6 +75,18 @@ public class StockController {
         return stockQueryService.query(keyword, exchangeCode, boardType, industry, concept, safePage, safeSize, sortBy, sortDirection);
     }
 
+    @GetMapping("/stocks/strength-members")
+    public Page<StockDto> getStrengthMembers(@RequestParam String type,
+                                             @RequestParam String label,
+                                             @RequestParam(defaultValue = "0") int page,
+                                             @RequestParam(defaultValue = "20") int size,
+                                             @RequestParam(defaultValue = "fiveDayChangePercent") String sortBy,
+                                             @RequestParam(defaultValue = "DESC") String sortDirection) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(1, Math.min(size, 200));
+        return stockQueryService.queryStrengthMembers(type, label, safePage, safeSize, sortBy, sortDirection);
+    }
+
     @GetMapping("/stocks/industries")
     public List<String> getIndustries() {
         return stockQueryService.getAllIndustries();

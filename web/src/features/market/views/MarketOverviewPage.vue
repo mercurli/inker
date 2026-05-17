@@ -1,15 +1,28 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useMarketSummary } from '@/features/market/composables/useMarketSummary'
 import { useMarketHotList } from '@/features/market/composables/useMarketHotList'
 import PanelCard from '@/shared/components/layout/PanelCard.vue'
 import SectionHeader from '@/shared/components/layout/SectionHeader.vue'
 import MetricCard from '@/shared/components/display/MetricCard.vue'
 import PriceChangeChip from '@/shared/components/display/PriceChangeChip.vue'
+import BoardTag from '@/shared/components/display/BoardTag.vue'
+import ConceptChipGroup from '@/shared/components/display/ConceptChipGroup.vue'
+import PaginationBar from '@/shared/components/interaction/PaginationBar.vue'
+import WatchlistToggleButton from '@/shared/components/interaction/WatchlistToggleButton.vue'
 import LoadingState from '@/shared/components/feedback/LoadingState.vue'
 import EmptyState from '@/shared/components/feedback/EmptyState.vue'
+import { resolveApiAssetUrl, stockApi, type Stock, type StockQueryParams, type StrengthMembersQueryParams } from '@/api/stock'
+import { useDashboardStore } from '@/shared/state/dashboardStore'
 import { formatPercent, toneByPercent } from '@/shared/lib/formatters'
+import { openStockDetailPage } from '@/shared/lib/navigation'
 import type { TrendTone } from '@/shared/types/common'
 
+type StrengthType = StrengthMembersQueryParams['type']
+
+const router = useRouter()
+const dashboardStore = useDashboardStore()
 const { marketSummary, priceChangeDistribution, topFiveDayRisingIndustries, topFiveDayRisingConcepts } = useMarketSummary()
 const {
   loading: hotListLoading,
@@ -21,6 +34,17 @@ const {
   resolvingCode,
   openStockDetailByCode
 } = useMarketHotList()
+const strengthDialog = ref<{ type: StrengthType; label: string } | null>(null)
+const strengthStocks = ref<Stock[]>([])
+const strengthLoading = ref(false)
+const strengthError = ref('')
+const strengthPage = ref(0)
+const strengthSize = ref(20)
+const strengthTotalElements = ref(0)
+const strengthTotalPages = ref(0)
+const strengthSortBy = ref<StockQueryParams['sortBy']>('fiveDayChangePercent')
+const strengthSortDirection = ref<'ASC' | 'DESC'>('DESC')
+let strengthRequestId = 0
 
 function priceChangeTone(value: number | null): TrendTone {
   return toneByPercent(value)
@@ -43,6 +67,141 @@ function formatRateWan(value: number | null) {
 
   return `${wanValue.toFixed(2)}万`
 }
+
+function strengthDialogTitle() {
+  const dialog = strengthDialog.value
+
+  if (!dialog) {
+    return ''
+  }
+
+  return `5日强势${dialog.type === 'industry' ? '行业' : '概念'}：${dialog.label}`
+}
+
+function primaryOrderedConcepts(stock: Stock) {
+  const concepts = stock.concepts.filter((concept) => concept.trim())
+
+  if (!stock.primaryConcept) {
+    return concepts
+  }
+
+  return [
+    stock.primaryConcept,
+    ...concepts.filter((concept) => concept !== stock.primaryConcept)
+  ]
+}
+
+function logoUrl(stock: Stock) {
+  return resolveApiAssetUrl(stock.logo)
+}
+
+function logoFallback(stock: Stock) {
+  return stock.name.trim().slice(0, 1) || stock.symbol.slice(0, 1) || '-'
+}
+
+function normalizeStock(stock: Stock): Stock {
+  const concepts = Array.isArray(stock.concepts)
+    ? Array.from(new Set(stock.concepts.map((item) => item.trim()).filter(Boolean)))
+    : []
+
+  return {
+    ...stock,
+    concepts,
+    logo: stock.logo || null,
+    primaryConcept: stock.primaryConcept ?? concepts[0] ?? null
+  }
+}
+
+async function fetchStrengthMembers() {
+  const dialog = strengthDialog.value
+
+  if (!dialog) {
+    return
+  }
+
+  const requestId = ++strengthRequestId
+  strengthLoading.value = true
+  strengthError.value = ''
+
+  try {
+    const response = await stockApi.getStrengthMembers({
+      type: dialog.type,
+      label: dialog.label,
+      page: strengthPage.value,
+      size: strengthSize.value,
+      sortBy: strengthSortBy.value,
+      sortDirection: strengthSortDirection.value
+    })
+
+    if (requestId !== strengthRequestId) {
+      return
+    }
+
+    strengthStocks.value = response.data.content.map(normalizeStock)
+    strengthTotalElements.value = response.data.totalElements
+    strengthTotalPages.value = response.data.totalPages
+  } catch {
+    if (requestId === strengthRequestId) {
+      strengthError.value = '加载强势明细失败，请确认后端服务是否已启动。'
+      strengthStocks.value = []
+      strengthTotalElements.value = 0
+      strengthTotalPages.value = 0
+    }
+  } finally {
+    if (requestId === strengthRequestId) {
+      strengthLoading.value = false
+    }
+  }
+}
+
+function openStrengthDialog(type: StrengthType, label: string) {
+  strengthDialog.value = { type, label }
+  strengthPage.value = 0
+  strengthSortBy.value = 'fiveDayChangePercent'
+  strengthSortDirection.value = 'DESC'
+  void fetchStrengthMembers()
+}
+
+function closeStrengthDialog() {
+  strengthDialog.value = null
+  strengthStocks.value = []
+  strengthError.value = ''
+  strengthLoading.value = false
+  strengthRequestId += 1
+}
+
+function onStrengthSort(field: StockQueryParams['sortBy']) {
+  if (strengthSortBy.value === field) {
+    strengthSortDirection.value = strengthSortDirection.value === 'ASC' ? 'DESC' : 'ASC'
+  } else {
+    strengthSortBy.value = field
+    strengthSortDirection.value = field === 'fiveDayChangePercent' ? 'DESC' : 'ASC'
+  }
+
+  strengthPage.value = 0
+  void fetchStrengthMembers()
+}
+
+function strengthSortIndicator(field: StockQueryParams['sortBy']) {
+  if (strengthSortBy.value !== field) {
+    return ''
+  }
+
+  return strengthSortDirection.value === 'ASC' ? ' ↑' : ' ↓'
+}
+
+function goToStrengthPage(nextPage: number) {
+  if (nextPage < 0 || nextPage >= strengthTotalPages.value) {
+    return
+  }
+
+  strengthPage.value = nextPage
+  void fetchStrengthMembers()
+}
+
+function openDetail(stock: Stock) {
+  openStockDetailPage(router, stock.id)
+}
 </script>
 
 <template>
@@ -50,9 +209,9 @@ function formatRateWan(value: number | null) {
     <div class="market-overview-layout">
       <div class="market-overview-main">
         <section class="market-strip">
-          <MetricCard label="上涨家数" :value="marketSummary.rising" note="偏强市场里更容易观察到趋势延续。" tone="up" />
-          <MetricCard label="下跌家数" :value="marketSummary.falling" note="下行阶段更适合优先做风险控制。" tone="down" />
-          <MetricCard label="平盘家数" :value="marketSummary.flat" note="中性分布时更要细看行业结构。" tone="neutral" />
+          <MetricCard label="上涨家数" :value="marketSummary.rising" note="" tone="up" />
+          <MetricCard label="下跌家数" :value="marketSummary.falling" note="" tone="down" />
+          <MetricCard label="平盘家数" :value="marketSummary.flat" note="" tone="neutral" />
         </section>
         <PanelCard>
           <SectionHeader eyebrow="Distribution" title="涨跌幅分布" />
@@ -84,7 +243,13 @@ function formatRateWan(value: number | null) {
               message="暂无近5日涨幅超过 5% 的行业数据。"
             />
             <div v-else class="strength-chart">
-              <div v-for="item in topFiveDayRisingIndustries" :key="item.label" class="strength-row">
+              <button
+                v-for="item in topFiveDayRisingIndustries"
+                :key="item.label"
+                class="strength-row strength-row--button"
+                type="button"
+                @click="openStrengthDialog('industry', item.label)"
+              >
                 <div class="strength-row-meta">
                   <span class="strength-row-label" :title="item.label">{{ item.label }}</span>
                   <span class="strength-row-count">{{ item.count }}</span>
@@ -92,7 +257,7 @@ function formatRateWan(value: number | null) {
                 <div class="strength-row-track">
                   <div class="strength-row-fill" :style="{ width: item.width }"></div>
                 </div>
-              </div>
+              </button>
             </div>
           </PanelCard>
 
@@ -104,7 +269,13 @@ function formatRateWan(value: number | null) {
               message="暂无近5日涨幅超过 5% 的概念数据。"
             />
             <div v-else class="strength-chart">
-              <div v-for="item in topFiveDayRisingConcepts" :key="item.label" class="strength-row">
+              <button
+                v-for="item in topFiveDayRisingConcepts"
+                :key="item.label"
+                class="strength-row strength-row--button"
+                type="button"
+                @click="openStrengthDialog('concept', item.label)"
+              >
                 <div class="strength-row-meta">
                   <span class="strength-row-label" :title="item.label">{{ item.label }}</span>
                   <span class="strength-row-count">{{ item.count }}</span>
@@ -112,7 +283,7 @@ function formatRateWan(value: number | null) {
                 <div class="strength-row-track">
                   <div class="strength-row-fill" :style="{ width: item.width }"></div>
                 </div>
-              </div>
+              </button>
             </div>
           </PanelCard>
         </div>
@@ -200,6 +371,126 @@ function formatRateWan(value: number | null) {
         </div>
       </PanelCard>
     </div>
+
+    <div v-if="strengthDialog" class="dialog-backdrop" @click.self="closeStrengthDialog">
+      <div class="dialog-card strength-dialog">
+        <div class="strength-dialog__header">
+          <div>
+            <h3 class="dialog-title">{{ strengthDialogTitle() }}</h3>
+            <p class="strength-dialog__subtitle">仅展示近5日涨幅超过 5% 的股票</p>
+          </div>
+          <div class="strength-dialog__actions">
+            <span class="stock-count">{{ strengthTotalElements }} 只</span>
+            <button class="btn btn-icon" type="button" aria-label="关闭" title="关闭" @click="closeStrengthDialog">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 6L6 18" />
+                <path d="M6 6L18 18" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div v-if="strengthError" class="state-block state-block--error">{{ strengthError }}</div>
+        <div v-else class="strength-dialog__body">
+          <div class="table-wrapper strength-table-wrapper" :class="{ 'table-wrapper--loading': strengthLoading }">
+            <table class="stock-table strength-stock-table">
+              <colgroup>
+                <col class="col-index" />
+                <col class="col-stock" />
+                <col class="col-price" />
+                <col class="col-change" />
+                <col class="col-change" />
+                <col class="col-amount" />
+                <col class="col-turnover" />
+                <col class="col-market-value" />
+                <col class="col-pe" />
+                <col class="col-industry" />
+                <col class="col-concepts" />
+                <col class="col-board" />
+                <col class="col-action" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th class="th-center col-cell-index">序号</th>
+                  <th class="th-sortable col-cell-stock" @click="onStrengthSort('code')">名称 / 代码{{ strengthSortIndicator('code') }}</th>
+                  <th class="th-sortable col-cell-price" @click="onStrengthSort('latestPrice')">最新价{{ strengthSortIndicator('latestPrice') }}</th>
+                  <th class="th-sortable col-cell-change" @click="onStrengthSort('changePercent')">涨跌幅{{ strengthSortIndicator('changePercent') }}</th>
+                  <th class="th-sortable col-cell-change col-cell-five-day" @click="onStrengthSort('fiveDayChangePercent')">5日涨跌幅{{ strengthSortIndicator('fiveDayChangePercent') }}</th>
+                  <th class="th-sortable col-cell-amount" @click="onStrengthSort('amount')">成交额{{ strengthSortIndicator('amount') }}</th>
+                  <th class="th-sortable col-cell-turnover" @click="onStrengthSort('turnoverRate')">换手{{ strengthSortIndicator('turnoverRate') }}</th>
+                  <th class="th-sortable col-cell-market-value" @click="onStrengthSort('totalMarketValue')">总市值{{ strengthSortIndicator('totalMarketValue') }}</th>
+                  <th class="th-sortable col-cell-pe" @click="onStrengthSort('dynamicPeRatio')">市盈率{{ strengthSortIndicator('dynamicPeRatio') }}</th>
+                  <th class="th-sortable col-cell-industry" @click="onStrengthSort('industry')">行业{{ strengthSortIndicator('industry') }}</th>
+                  <th class="th-center col-cell-concepts">概念</th>
+                  <th class="th-sortable th-center col-cell-board" @click="onStrengthSort('boardType')">板块{{ strengthSortIndicator('boardType') }}</th>
+                  <th class="th-center col-cell-action">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="strengthLoading && strengthStocks.length === 0">
+                  <td colspan="13" class="td-center">
+                    <LoadingState text="明细加载中..." />
+                  </td>
+                </tr>
+                <tr v-else-if="strengthStocks.length === 0">
+                  <td colspan="13" class="td-center">
+                    <EmptyState message="暂无符合条件的强势股票。" />
+                  </td>
+                </tr>
+                <tr v-for="(stock, index) in strengthStocks" :key="stock.id">
+                  <td class="td-center col-cell-index">{{ strengthPage * strengthSize + index + 1 }}</td>
+                  <td class="td-stock col-cell-stock">
+                    <button class="stock-link stock-link--stacked" type="button" @click="openDetail(stock)">
+                      <span class="stock-link__main">
+                        <img v-if="logoUrl(stock)" class="stock-logo" :src="logoUrl(stock) ?? ''" :alt="`${stock.name} logo`" loading="lazy" />
+                        <span v-else class="stock-logo stock-logo--fallback">{{ logoFallback(stock) }}</span>
+                        <span class="stock-link__text">
+                          <span class="stock-link__name">{{ stock.name }}</span>
+                          <span class="stock-link__symbol">{{ stock.symbol }}</span>
+                        </span>
+                      </span>
+                    </button>
+                  </td>
+                  <td class="col-cell-price">{{ dashboardStore.formatPrice(stock.latestPrice) }}</td>
+                  <td class="col-cell-change">
+                    <PriceChangeChip :tone="dashboardStore.changeClass(stock.changePercent)" :value="dashboardStore.formatPercent(stock.changePercent)" />
+                  </td>
+                  <td class="col-cell-change col-cell-five-day">
+                    <PriceChangeChip :tone="dashboardStore.changeClass(stock.fiveDayChangePercent)" :value="dashboardStore.formatPercent(stock.fiveDayChangePercent)" />
+                  </td>
+                  <td class="col-cell-amount">{{ dashboardStore.formatAmount(stock.amount) }}</td>
+                  <td class="col-cell-turnover">{{ dashboardStore.formatTurnoverRate(stock.turnoverRate) }}</td>
+                  <td class="col-cell-market-value">{{ dashboardStore.formatMarketValue(stock.totalMarketValue) }}</td>
+                  <td class="col-cell-pe">{{ dashboardStore.formatPeRatio(stock.dynamicPeRatio) }}</td>
+                  <td class="col-cell-industry">{{ stock.industry || '--' }}</td>
+                  <td class="td-center col-cell-concepts">
+                    <ConceptChipGroup :concepts="primaryOrderedConcepts(stock)" :primary-concept="stock.primaryConcept" :max="1" />
+                  </td>
+                  <td class="td-center col-cell-board">
+                    <BoardTag :label="stock.boardType || '--'" :variant="dashboardStore.boardClass(stock.boardType)" />
+                  </td>
+                  <td class="td-center col-cell-action">
+                    <WatchlistToggleButton :active="dashboardStore.isInWatchlist(stock.id)" @toggle="dashboardStore.toggleWatchlist(stock)" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div v-if="strengthLoading && strengthStocks.length > 0" class="table-loading-overlay" aria-live="polite">
+              <span class="table-loading-spinner" aria-hidden="true"></span>
+              <span>明细加载中...</span>
+            </div>
+          </div>
+
+          <PaginationBar
+            v-if="strengthTotalPages > 1"
+            :page="strengthPage"
+            :total-pages="strengthTotalPages"
+            @change="goToStrengthPage"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -237,6 +528,28 @@ function formatRateWan(value: number | null) {
   display: grid;
   gap: var(--space-2);
   min-width: 0;
+}
+
+.strength-row--button {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  padding: var(--space-2);
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.strength-row--button:hover {
+  border-color: var(--border-default);
+  background: var(--bg-soft);
+}
+
+.strength-row--button:focus-visible {
+  outline: 2px solid var(--primary-500);
+  outline-offset: 2px;
 }
 
 .strength-row-meta {
@@ -277,6 +590,103 @@ function formatRateWan(value: number | null) {
   border-radius: inherit;
   background: linear-gradient(90deg, #fca5a5 0%, var(--up-500) 100%);
   transition: width var(--transition-fast);
+}
+
+.strength-dialog {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.strength-dialog__header,
+.strength-dialog__actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.strength-dialog__actions {
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.strength-dialog__subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.strength-dialog__body {
+  min-height: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.strength-table-wrapper {
+  min-height: 240px;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+}
+
+.strength-stock-table {
+  min-width: 1040px;
+}
+
+.strength-stock-table th,
+.strength-stock-table td {
+  overflow: hidden;
+  padding: var(--space-2);
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.strength-stock-table th {
+  letter-spacing: 0;
+}
+
+.strength-stock-table .col-cell-concepts :deep(.concept-chip-group) {
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.strength-stock-table .col-cell-concepts :deep(.concept-chip) {
+  min-width: 0;
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.strength-stock-table :deep(.price-chip) {
+  max-width: 100%;
+  min-width: 0;
+  justify-content: center;
+  padding: 0 var(--space-1);
+}
+
+.strength-stock-table .stock-link,
+.strength-stock-table .stock-link__main,
+.strength-stock-table .stock-link__text,
+.strength-stock-table .stock-link__name,
+.strength-stock-table .stock-link__symbol {
+  max-width: 100%;
+}
+
+.strength-stock-table .stock-link {
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+
+.strength-stock-table .stock-link__name,
+.strength-stock-table .stock-link__symbol {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hotlist-panel {
@@ -518,6 +928,19 @@ function formatRateWan(value: number | null) {
   .hotlist-panel {
     max-height: calc(100vh - 160px);
   }
+
+  .strength-stock-table .col-concepts,
+  .strength-stock-table .col-pe,
+  .strength-stock-table .col-board,
+  .strength-stock-table .col-cell-concepts,
+  .strength-stock-table .col-cell-pe,
+  .strength-stock-table .col-cell-board {
+    display: none;
+  }
+
+  .strength-stock-table {
+    min-width: 820px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -529,6 +952,52 @@ function formatRateWan(value: number | null) {
   .hotlist-item-button :deep(.price-chip),
   .hotlist-badge-group {
     justify-self: start;
+  }
+
+  .strength-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    padding: var(--space-3);
+  }
+
+  .strength-dialog__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .strength-dialog__actions {
+    justify-content: space-between;
+  }
+
+  .strength-table-wrapper {
+    max-height: calc(100vh - 250px);
+  }
+
+  .strength-stock-table .col-amount,
+  .strength-stock-table .col-turnover,
+  .strength-stock-table .col-market-value,
+  .strength-stock-table .col-industry,
+  .strength-stock-table .col-cell-amount,
+  .strength-stock-table .col-cell-turnover,
+  .strength-stock-table .col-cell-market-value,
+  .strength-stock-table .col-cell-industry {
+    display: none;
+  }
+
+  .strength-stock-table {
+    min-width: 560px;
+  }
+
+  .strength-stock-table th,
+  .strength-stock-table td {
+    padding: var(--space-2) var(--space-1);
+    font-size: var(--font-size-xs);
+  }
+
+  .strength-stock-table .stock-logo,
+  .strength-stock-table .stock-logo--fallback {
+    width: 28px;
+    height: 28px;
   }
 }
 </style>

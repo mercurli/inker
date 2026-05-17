@@ -6,6 +6,7 @@ import com.inker.backend.dto.UpdateStockConceptsRequest;
 import com.inker.backend.entity.Stock;
 import com.inker.backend.repository.StockRepository;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -82,6 +83,36 @@ public class StockQueryService {
         return stockRepository.findById(id).map(StockDto::fromEntity);
     }
 
+    public Page<StockDto> queryStrengthMembers(String type,
+                                               String label,
+                                               int page,
+                                               int size,
+                                               String sortBy,
+                                               String sortDirection) {
+        String normalizedType = normalize(type);
+        String normalizedLabel = normalize(label);
+        String normalizedSortBy = normalizeSortBy(sortBy);
+        Sort.Direction direction = "ASC".equalsIgnoreCase(sortDirection) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Pageable pageable = PageRequest.of(page, size, buildSort(normalizedSortBy, direction));
+
+        if (normalizedType == null || normalizedLabel == null || (!"industry".equals(normalizedType) && !"concept".equals(normalizedType))) {
+            return Page.empty(pageable);
+        }
+
+        List<StockDto> results = stockRepository.findAll().stream()
+                .filter(stock -> stock.getFiveDayChangePercent() != null)
+                .filter(stock -> stock.getFiveDayChangePercent() > FIVE_DAY_RISING_THRESHOLD)
+                .filter(stock -> strengthLabel(stock, normalizedType).equals(normalizedLabel))
+                .sorted(strengthMemberComparator(normalizedSortBy, direction))
+                .map(StockDto::fromEntity)
+                .toList();
+
+        int fromIndex = Math.min((int) pageable.getOffset(), results.size());
+        int toIndex = Math.min(fromIndex + pageable.getPageSize(), results.size());
+
+        return new PageImpl<>(results.subList(fromIndex, toIndex), pageable, results.size());
+    }
+
     @Transactional
     public StockDto updateConcepts(Long id, UpdateStockConceptsRequest request) {
         Stock stock = stockRepository.findById(id)
@@ -154,6 +185,64 @@ public class StockQueryService {
                         .tone("up")
                         .build())
                 .toList();
+    }
+
+    private String strengthLabel(Stock stock, String type) {
+        return "concept".equals(type) ? primaryConceptLabel(stock) : industryLabel(stock);
+    }
+
+    private Comparator<Stock> strengthMemberComparator(String sortBy, Sort.Direction direction) {
+        return (left, right) -> {
+            int result = compareSortValue(sortValue(left, sortBy), sortValue(right, sortBy), direction);
+
+            if (result != 0) {
+                return result;
+            }
+
+            return compareSortValue(left.getCode(), right.getCode());
+        };
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private int compareSortValue(Comparable left, Comparable right, Sort.Direction direction) {
+        if (left == null && right == null) {
+            return 0;
+        }
+
+        if (left == null) {
+            return 1;
+        }
+
+        if (right == null) {
+            return -1;
+        }
+
+        int result = left.compareTo(right);
+        return direction == Sort.Direction.DESC ? -result : result;
+    }
+
+    private int compareSortValue(Comparable<?> left, Comparable<?> right) {
+        return compareSortValue(left, right, Sort.Direction.ASC);
+    }
+
+    private Comparable<?> sortValue(Stock stock, String sortBy) {
+        return switch (sortBy) {
+            case "name" -> stock.getName();
+            case "exchangeCode" -> stock.getExchangeCode();
+            case "market" -> stock.getMarket();
+            case "industry" -> stock.getIndustry();
+            case "listDate" -> stock.getListDate();
+            case "id" -> stock.getId();
+            case "latestPrice" -> stock.getLatestPrice();
+            case "changePercent" -> stock.getChangePercent();
+            case "fiveDayChangePercent" -> stock.getFiveDayChangePercent();
+            case "amount" -> stock.getAmount();
+            case "turnoverRate" -> stock.getTurnoverRate();
+            case "totalMarketValue" -> stock.getTotalMarketValue();
+            case "dynamicPeRatio" -> stock.getDynamicPeRatio();
+            case "boardType" -> stock.getBoardType();
+            default -> stock.getCode();
+        };
     }
 
     private String industryLabel(Stock stock) {

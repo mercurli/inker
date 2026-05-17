@@ -148,6 +148,75 @@ class StockQueryServiceTest {
         assertTrue(summary.getTopFiveDayRisingConcepts().stream().allMatch(item -> "up".equals(item.getTone())));
     }
 
+    @Test
+    void queryStrengthMembersShouldMatchIndustrySummaryCount() {
+        stockRepository.deleteAll();
+        stockRepository.save(stock("600101", "强势一号", "Alpha", List.of("AI"), 8D));
+        stockRepository.save(stock("600102", "强势二号", "Alpha", List.of("AI"), 6D));
+        stockRepository.save(stock("600103", "边界股票", "Alpha", List.of("AI"), 5D));
+        stockRepository.save(stock("600104", "其他行业", "Beta", List.of("AI"), 9D));
+
+        MarketSummaryDto summary = stockQueryService.getMarketSummary();
+        Page<StockDto> result = stockQueryService.queryStrengthMembers(
+                "industry", "Alpha", 0, 20, "fiveDayChangePercent", "DESC"
+        );
+
+        long summaryCount = summary.getTopFiveDayRisingIndustries().stream()
+                .filter(item -> "Alpha".equals(item.getLabel()))
+                .findFirst()
+                .orElseThrow()
+                .getCount();
+
+        assertEquals(summaryCount, result.getTotalElements());
+        assertEquals(List.of("强势一号", "强势二号"), result.getContent().stream().map(StockDto::getName).toList());
+    }
+
+    @Test
+    void queryStrengthMembersShouldMatchUnclassifiedIndustry() {
+        stockRepository.deleteAll();
+        stockRepository.save(stock("600101", "空行业一号", null, List.of("AI"), 8D));
+        stockRepository.save(stock("600102", "空行业二号", " ", List.of("AI"), 6D));
+        stockRepository.save(stock("600103", "普通行业", "Alpha", List.of("AI"), 9D));
+
+        Page<StockDto> result = stockQueryService.queryStrengthMembers(
+                "industry", "未分类行业", 0, 20, "code", "ASC"
+        );
+
+        assertEquals(2, result.getTotalElements());
+        assertEquals(List.of("空行业一号", "空行业二号"), result.getContent().stream().map(StockDto::getName).toList());
+    }
+
+    @Test
+    void queryStrengthMembersShouldMatchPrimaryConceptOnly() {
+        stockRepository.deleteAll();
+        stockRepository.save(stock("600101", "主概念股票", "Alpha", List.of("AI", "机器人"), 8D));
+        stockRepository.save(stock("600102", "次概念股票", "Alpha", List.of("机器人", "AI"), 9D));
+        stockRepository.save(stock("600103", "弱势主概念", "Alpha", List.of("AI"), 4D));
+
+        Page<StockDto> result = stockQueryService.queryStrengthMembers(
+                "concept", "AI", 0, 20, "fiveDayChangePercent", "DESC"
+        );
+
+        assertEquals(1, result.getTotalElements());
+        assertEquals("主概念股票", result.getContent().get(0).getName());
+    }
+
+    @Test
+    void queryStrengthMembersShouldPageAndSort() {
+        stockRepository.deleteAll();
+        stockRepository.save(stock("600101", "三号", "Alpha", List.of("AI"), 8D));
+        stockRepository.save(stock("600102", "一号", "Alpha", List.of("AI"), 12D));
+        stockRepository.save(stock("600103", "二号", "Alpha", List.of("AI"), 10D));
+
+        Page<StockDto> result = stockQueryService.queryStrengthMembers(
+                "industry", "Alpha", 1, 1, "fiveDayChangePercent", "DESC"
+        );
+
+        assertEquals(3, result.getTotalElements());
+        assertEquals(3, result.getTotalPages());
+        assertEquals(List.of("二号"), result.getContent().stream().map(StockDto::getName).toList());
+    }
+
     private void assertNullsLastSortOrder(String sortBy) {
         Page<StockDto> descResult = stockQueryService.query(null, null, null, null, null, 0, 20, sortBy, "DESC");
         Page<StockDto> ascResult = stockQueryService.query(null, null, null, null, null, 0, 20, sortBy, "ASC");

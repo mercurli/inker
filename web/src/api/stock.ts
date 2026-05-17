@@ -67,6 +67,15 @@ export interface StockQueryParams {
   sortDirection?: 'ASC' | 'DESC'
 }
 
+export interface StrengthMembersQueryParams {
+  type: 'industry' | 'concept'
+  label: string
+  page?: number
+  size?: number
+  sortBy?: StockQueryParams['sortBy']
+  sortDirection?: 'ASC' | 'DESC'
+}
+
 export interface PageResponse<T> {
   content: T[]
   totalElements: number
@@ -142,6 +151,7 @@ export function resolveApiAssetUrl(path?: string | null) {
 
 export const stockApi = {
   getStocks: (params?: StockQueryParams) => http.get<PageResponse<Stock>>('/stocks', { params }),
+  getStrengthMembers: (params: StrengthMembersQueryParams) => http.get<PageResponse<Stock>>('/stocks/strength-members', { params }),
   getStock: (id: number) => http.get<Stock>(`/stocks/${id}`),
   updateStockConcepts: (id: number, payload: UpdateStockConceptsRequest) => http.patch<Stock>(`/stocks/${id}/concepts`, payload),
   getDailyKLine: (id: number, limit = 60) => http.get<StockDailyKLine>(`/stocks/${id}/daily-k-line`, { params: { limit } }),
