@@ -18,9 +18,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -43,11 +45,14 @@ class StockQuoteSyncServiceTest {
     @Mock
     private LatestTradeDateService latestTradeDateService;
 
+    @Mock
+    private TradingCalendarService tradingCalendarService;
+
     private StockQuoteSyncService service;
 
     @BeforeEach
     void setUp() {
-        service = new StockQuoteSyncService(stockRepository, latestTradeDateService, restTemplate, new ObjectMapper());
+        service = new StockQuoteSyncService(stockRepository, latestTradeDateService, tradingCalendarService, restTemplate, new ObjectMapper());
         ReflectionTestUtils.setField(service, "tushareApiUrl", "http://api.tushare.pro");
         ReflectionTestUtils.setField(service, "tushareToken", "test-token");
     }
@@ -61,7 +66,7 @@ class StockQuoteSyncServiceTest {
         mockTushareDailyResponse(dailyResponse("""
                 ["600000.SH","20260430",9.12,1.23],
                 ["000001.SZ","20260430",11.34,-0.56]
-                """), tradeCalResponse("""
+                """), sampleTradeDateResponse("""
                 ["20260430"],
                 ["20260429"],
                 ["20260428"],
@@ -104,12 +109,39 @@ class StockQuoteSyncServiceTest {
         Map<?, ?> payload = (Map<?, ?>) requestCaptor.getAllValues().get(0).getBody();
         assertEquals("daily", payload.get("api_name"));
         assertEquals(Map.of("trade_date", "20260430"), payload.get("params"));
-        Map<?, ?> tradeCalPayload = (Map<?, ?>) requestCaptor.getAllValues().get(1).getBody();
-        assertEquals("trade_cal", tradeCalPayload.get("api_name"));
+        Map<?, ?> sampleTradeDatePayload = (Map<?, ?>) requestCaptor.getAllValues().get(1).getBody();
+        assertEquals("daily", sampleTradeDatePayload.get("api_name"));
+        assertEquals(Map.of("ts_code", "600000.SH", "start_date", "20260409", "end_date", "20260430"), sampleTradeDatePayload.get("params"));
         Map<?, ?> baselinePayload = (Map<?, ?>) requestCaptor.getAllValues().get(2).getBody();
         assertEquals("daily", baselinePayload.get("api_name"));
         assertEquals(Map.of("trade_date", "20260423"), baselinePayload.get("params"));
         verify(restTemplate, times(2)).exchange(any(URI.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class));
+    }
+
+    @Test
+    void syncDailyQuotesFromTushare_shouldUseManualCalendarForFiveDayBaselineWhenAvailable() {
+        Stock shStock = stock("600000", 8.50, 0.10);
+        when(stockRepository.findAll()).thenReturn(List.of(shStock));
+        when(latestTradeDateService.refreshLatestAshareTradeDate()).thenReturn("20260430");
+        when(tradingCalendarService.resolveNthPreviousOpenDate(LocalDate.parse("2026-04-30"), 5))
+                .thenReturn(Optional.of(LocalDate.parse("2026-04-23")));
+        mockTushareDailyResponse(dailyResponse("""
+                ["600000.SH","20260430",9.12,1.23]
+                """), baselineResponse("""
+                ["600000.SH","20260423",8.00]
+                """));
+        mockTongHuaShunResponses(tongHuaShunResponse("1000000.00", "200000000.00", "3.45", "3000000000.00", "2500000000.00", "18.90"));
+
+        QuoteSyncResultDto result = service.syncDailyQuotesFromTushare();
+
+        assertEquals(1, result.getUpdated());
+        assertEquals("20260423", result.getFiveDayBaselineTradeDate());
+        ArgumentCaptor<HttpEntity> requestCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate, times(2)).exchange(any(URI.class), eq(HttpMethod.POST), requestCaptor.capture(), eq(String.class));
+        List<?> apiNames = requestCaptor.getAllValues().stream()
+                .map(entity -> ((Map<?, ?>) entity.getBody()).get("api_name"))
+                .toList();
+        assertEquals(List.of("daily", "daily"), apiNames);
     }
 
     @Test
@@ -119,7 +151,7 @@ class StockQuoteSyncServiceTest {
         when(latestTradeDateService.refreshLatestAshareTradeDate()).thenReturn("20260430");
         mockTushareDailyResponse(dailyResponse("""
                 ["600000.SH","20260430",9.12,1.23]
-                """), tradeCalResponse("""
+                """), sampleTradeDateResponse("""
                 ["20260430"],
                 ["20260429"],
                 ["20260428"],
@@ -156,7 +188,7 @@ class StockQuoteSyncServiceTest {
         mockTushareDailyResponse(dailyResponse("""
                 ["600000.SH","20260430",9.12,1.23],
                 ["000001.SZ","20260430",11.34,-0.56]
-                """), tradeCalResponse("""
+                """), sampleTradeDateResponse("""
                 ["20260430"],
                 ["20260429"],
                 ["20260428"],
@@ -258,7 +290,7 @@ class StockQuoteSyncServiceTest {
         when(latestTradeDateService.refreshLatestAshareTradeDate()).thenReturn("20260430");
         mockTushareDailyResponse(dailyResponse("""
                 ["600000.SH","20260430",9.12,1.23]
-                """), tradeCalResponse("""
+                """), sampleTradeDateResponse("""
                 ["20260430"],
                 ["20260429"],
                 ["20260428"],
@@ -307,9 +339,9 @@ class StockQuoteSyncServiceTest {
                 """.formatted(items);
     }
 
-    private String tradeCalResponse(String items) {
+    private String sampleTradeDateResponse(String items) {
         return """
-                {"code":0,"msg":null,"data":{"fields":["cal_date"],"items":[
+                {"code":0,"msg":null,"data":{"fields":["trade_date"],"items":[
                 %s
                 ]}}
                 """.formatted(items);

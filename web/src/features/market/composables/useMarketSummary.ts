@@ -8,6 +8,8 @@ export function useMarketSummary() {
     watchlistCount: store.watchlistCount,
     strongestStockLabel: store.strongestStockLabel,
     priceChangeDistribution: store.priceChangeDistribution,
+    topFiveDayRisingIndustries: store.topFiveDayRisingIndustries,
+    topFiveDayRisingConcepts: store.topFiveDayRisingConcepts,
     fetchMarketSummary: store.fetchMarketSummary
   }
 }

@@ -15,6 +15,8 @@ public class MarketSummaryDto {
     LocalDateTime lastSyncedAt;
     LeaderDto strongest;
     java.util.List<DistributionBucketDto> distribution;
+    java.util.List<DistributionBucketDto> topFiveDayRisingIndustries;
+    java.util.List<DistributionBucketDto> topFiveDayRisingConcepts;
 
     @Value
     @Builder

@@ -258,17 +258,6 @@ function openConceptFilter(concept: string) {
   void router.push({ name: 'stocks', query: { concept } })
 }
 
-function goBack() {
-  const previousRoute = window.history.state?.back
-
-  if (typeof previousRoute === 'string' && previousRoute) {
-    router.back()
-    return
-  }
-
-  void router.push({ name: 'stocks' })
-}
-
 function openConceptDialog() {
   primaryConceptInput.value = primaryConcept.value ?? ''
   newConceptInput.value = ''
@@ -364,14 +353,8 @@ async function saveConcepts(nextConcepts: string[]) {
 <template>
   <div class="page-stack stock-detail-page">
     <PanelCard>
-      <div class="detail-page-topbar">
-        <button class="btn btn-icon" type="button" aria-label="返回上一页" title="返回上一页" @click="goBack">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M15 6L9 12L15 18" />
-          </svg>
-        </button>
+      <div v-if="store.selectedStock.value" class="detail-page-topbar detail-page-topbar--actions">
         <button
-          v-if="store.selectedStock.value"
           class="btn"
           :class="{ 'btn-primary': store.isInWatchlist(store.selectedStock.value.id) }"
           type="button"
@@ -415,6 +398,19 @@ async function saveConcepts(nextConcepts: string[]) {
           <article class="detail-item"><span class="detail-item-label">所属板块</span><strong>{{ store.selectedStock.value.boardType || '--' }}</strong></article>
           <article class="detail-item"><span class="detail-item-label">所属行业</span><strong>{{ store.selectedStock.value.industry || '--' }}</strong></article>
           <article class="detail-item"><span class="detail-item-label">上市日期</span><strong>{{ store.formatDate(store.selectedStock.value.listDate) }}</strong></article>
+          <article class="detail-item">
+            <span class="detail-item-label">5日涨跌幅</span>
+            <PriceChangeChip
+              :tone="store.changeClass(store.selectedStock.value.fiveDayChangePercent)"
+              :value="store.formatPercent(store.selectedStock.value.fiveDayChangePercent)"
+            />
+          </article>
+          <article class="detail-item"><span class="detail-item-label">成交量</span><strong>{{ store.formatVolume(store.selectedStock.value.volume) }}</strong></article>
+          <article class="detail-item"><span class="detail-item-label">成交额</span><strong>{{ store.formatAmount(store.selectedStock.value.amount) }}</strong></article>
+          <article class="detail-item"><span class="detail-item-label">换手率</span><strong>{{ store.formatTurnoverRate(store.selectedStock.value.turnoverRate) }}</strong></article>
+          <article class="detail-item"><span class="detail-item-label">总市值</span><strong>{{ store.formatMarketValue(store.selectedStock.value.totalMarketValue) }}</strong></article>
+          <article class="detail-item"><span class="detail-item-label">流通市值</span><strong>{{ store.formatMarketValue(store.selectedStock.value.circulatingMarketValue) }}</strong></article>
+          <article class="detail-item"><span class="detail-item-label">动态市盈率</span><strong>{{ store.formatPeRatio(store.selectedStock.value.dynamicPeRatio) }}</strong></article>
           <article class="detail-item detail-item--full">
             <span class="detail-item-label">所属概念</span>
             <ConceptChipGroup

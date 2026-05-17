@@ -44,6 +44,7 @@ public class StockQuoteSyncService {
 
     private final StockRepository stockRepository;
     private final LatestTradeDateService latestTradeDateService;
+    private final TradingCalendarService tradingCalendarService;
     private final ObjectMapper objectMapper;
     private final RestTemplate restTemplate;
 
@@ -55,16 +56,26 @@ public class StockQuoteSyncService {
 
     @Autowired
     public StockQuoteSyncService(StockRepository stockRepository,
-                                 LatestTradeDateService latestTradeDateService) {
-        this(stockRepository, latestTradeDateService, createRestTemplate(), new ObjectMapper());
+                                 LatestTradeDateService latestTradeDateService,
+                                 TradingCalendarService tradingCalendarService) {
+        this(stockRepository, latestTradeDateService, tradingCalendarService, createRestTemplate(), new ObjectMapper());
     }
 
     StockQuoteSyncService(StockRepository stockRepository,
                           LatestTradeDateService latestTradeDateService,
                           RestTemplate restTemplate,
                           ObjectMapper objectMapper) {
+        this(stockRepository, latestTradeDateService, null, restTemplate, objectMapper);
+    }
+
+    StockQuoteSyncService(StockRepository stockRepository,
+                          LatestTradeDateService latestTradeDateService,
+                          TradingCalendarService tradingCalendarService,
+                          RestTemplate restTemplate,
+                          ObjectMapper objectMapper) {
         this.stockRepository = stockRepository;
         this.latestTradeDateService = latestTradeDateService;
+        this.tradingCalendarService = tradingCalendarService;
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
     }
@@ -188,7 +199,7 @@ public class StockQuoteSyncService {
             return FiveDayBaseline.empty();
         }
 
-        String baselineTradeDate = fetchFiveDayBaselineTradeDate(tradeDate);
+        String baselineTradeDate = fetchFiveDayBaselineTradeDate(tradeDate, quotes);
         if (baselineTradeDate == null) {
             return FiveDayBaseline.empty();
         }
@@ -228,18 +239,40 @@ public class StockQuoteSyncService {
         return "已获取 " + baseline.tradeDate() + " 的 5 日涨跌幅基准价 " + baseline.closesByCode().size() + " 条";
     }
 
-    private String fetchFiveDayBaselineTradeDate(String tradeDate) {
+    private String fetchFiveDayBaselineTradeDate(String tradeDate, List<TushareQuote> quotes) {
         LocalDate endDate = LocalDate.parse(tradeDate, TUSHARE_DATE_FORMATTER);
+        if (tradingCalendarService != null) {
+            var manualBaselineDate = tradingCalendarService.resolveNthPreviousOpenDate(endDate, 5);
+            String manualBaselineTradeDate = manualBaselineDate == null
+                    ? null
+                    : manualBaselineDate.map(date -> date.format(TUSHARE_DATE_FORMATTER)).orElse(null);
+            if (manualBaselineTradeDate != null) {
+                return manualBaselineTradeDate;
+            }
+            log.warn("Manual trading calendar does not contain enough open days to calculate 5-day change. tradeDate={}", tradeDate);
+        }
+
+        String sampleTsCode = quotes.stream()
+                .map(TushareQuote::tsCode)
+                .filter(tsCode -> tsCode != null && !tsCode.isBlank())
+                .findFirst()
+                .orElse(null);
+        if (sampleTsCode == null) {
+            log.warn("No sample stock code to infer 5-day baseline trade date. tradeDate={}", tradeDate);
+            return null;
+        }
+
         String startDate = endDate.minusDays(21).format(TUSHARE_DATE_FORMATTER);
         JsonNode data = callTushare(
-                "trade_cal",
-                Map.of("exchange", "SSE", "start_date", startDate, "end_date", tradeDate, "is_open", "1"),
-                "cal_date"
+                "daily",
+                Map.of("ts_code", sampleTsCode, "start_date", startDate, "end_date", tradeDate),
+                "trade_date"
         );
         Map<String, Integer> fieldIndexMap = buildFieldIndexMap(data.path("fields"));
         JsonNode itemsNode = data.path("items");
         if (!itemsNode.isArray() || itemsNode.isEmpty()) {
-            log.warn("Tushare trade_cal API returned empty data for 5-day change. startDate={}, endDate={}", startDate, tradeDate);
+            log.warn("Tushare daily API returned empty sample trade dates for 5-day change. sampleTsCode={}, startDate={}, endDate={}",
+                    sampleTsCode, startDate, tradeDate);
             return null;
         }
 
@@ -248,7 +281,7 @@ public class StockQuoteSyncService {
             if (!item.isArray()) {
                 continue;
             }
-            LocalDate itemTradeDate = readTradeDate(item, fieldIndexMap, "cal_date");
+            LocalDate itemTradeDate = readTradeDate(item, fieldIndexMap, "trade_date");
             if (itemTradeDate != null) {
                 tradeDates.add(itemTradeDate);
             }
@@ -259,7 +292,8 @@ public class StockQuoteSyncService {
                 .sorted(Comparator.reverseOrder())
                 .toList();
         if (descTradeDates.size() <= 5) {
-            log.warn("Not enough trade dates to calculate 5-day change. tradeDate={}, resolvedCount={}", tradeDate, descTradeDates.size());
+            log.warn("Not enough sample trade dates to calculate 5-day change. sampleTsCode={}, tradeDate={}, resolvedCount={}",
+                    sampleTsCode, tradeDate, descTradeDates.size());
             return null;
         }
         return descTradeDates.get(5).format(TUSHARE_DATE_FORMATTER);
@@ -292,6 +326,7 @@ public class StockQuoteSyncService {
                 continue;
             }
             quotes.add(new TushareQuote(
+                    tsCode,
                     code,
                     readDouble(item, fieldIndexMap, "close"),
                     readDouble(item, fieldIndexMap, "pct_chg"),
@@ -524,6 +559,7 @@ public class StockQuoteSyncService {
     }
 
     private record TushareQuote(
+            String tsCode,
             String code,
             Double latestPrice,
             Double changePercent,

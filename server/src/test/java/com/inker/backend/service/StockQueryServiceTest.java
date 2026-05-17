@@ -1,5 +1,6 @@
 package com.inker.backend.service;
 
+import com.inker.backend.dto.MarketSummaryDto;
 import com.inker.backend.dto.StockDto;
 import com.inker.backend.dto.UpdateStockConceptsRequest;
 import com.inker.backend.entity.Stock;
@@ -113,6 +114,40 @@ class StockQueryServiceTest {
         assertEquals("机器人", result.getPrimaryConcept());
     }
 
+    @Test
+    void marketSummaryShouldReturnTopFiveDayRisingIndustryAndPrimaryConceptCounts() {
+        stockRepository.deleteAll();
+        stockRepository.save(stock("600101", "强势一号", "Alpha", List.of("AI", "机器人"), 8D));
+        stockRepository.save(stock("600102", "强势二号", "Alpha", List.of("AI", "算力"), 6D));
+        stockRepository.save(stock("600103", "强势三号", "Beta", List.of("Cloud"), 9D));
+        stockRepository.save(stock("600104", "强势四号", "Beta", List.of("Robot"), 7D));
+        stockRepository.save(stock("600105", "强势五号", null, List.of("New"), 6D));
+        stockRepository.save(stock("600106", "强势六号", " ", List.of(""), 10D));
+        stockRepository.save(stock("600107", "边界股票", "Gamma", List.of("Cloud"), 5D));
+        stockRepository.save(stock("600108", "空指标股票", "Delta", List.of("AI"), null));
+        stockRepository.save(stock("600109", "强势七号", "Gamma", List.of("Cloud"), 12D));
+        stockRepository.save(stock("600110", "强势八号", "Delta", List.of("Edge"), 11D));
+        stockRepository.save(stock("600111", "强势九号", "Epsilon", List.of("Storage"), 13D));
+        stockRepository.save(stock("600112", "强势十号", "Zeta", List.of("Vision"), 14D));
+
+        MarketSummaryDto summary = stockQueryService.getMarketSummary();
+
+        assertEquals(
+                List.of("Alpha:2", "Beta:2", "未分类行业:2", "Delta:1", "Epsilon:1"),
+                summary.getTopFiveDayRisingIndustries().stream()
+                        .map(item -> item.getLabel() + ":" + item.getCount())
+                        .toList()
+        );
+        assertEquals(
+                List.of("AI:2", "Cloud:2", "Edge:1", "New:1", "Robot:1"),
+                summary.getTopFiveDayRisingConcepts().stream()
+                        .map(item -> item.getLabel() + ":" + item.getCount())
+                        .toList()
+        );
+        assertTrue(summary.getTopFiveDayRisingIndustries().stream().allMatch(item -> "up".equals(item.getTone())));
+        assertTrue(summary.getTopFiveDayRisingConcepts().stream().allMatch(item -> "up".equals(item.getTone())));
+    }
+
     private void assertNullsLastSortOrder(String sortBy) {
         Page<StockDto> descResult = stockQueryService.query(null, null, null, null, null, 0, 20, sortBy, "DESC");
         Page<StockDto> ascResult = stockQueryService.query(null, null, null, null, null, 0, 20, sortBy, "ASC");
@@ -143,6 +178,12 @@ class StockQueryServiceTest {
         stock.setFiveDayChangePercent(dynamicPeRatio);
         stock.setDynamicPeRatio(dynamicPeRatio);
         stock.setSt(false);
+        return stock;
+    }
+
+    private Stock stock(String code, String name, String industry, List<String> concepts, Double fiveDayChangePercent) {
+        Stock stock = stock(code, name, concepts, null, null, null, fiveDayChangePercent);
+        stock.setIndustry(industry);
         return stock;
     }
 }

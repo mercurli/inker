@@ -17,6 +17,7 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
+import java.time.LocalDate;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,13 +36,32 @@ class LatestTradeDateServiceTest {
     @Mock
     private RestTemplate restTemplate;
 
+    @Mock
+    private TradingCalendarService tradingCalendarService;
+
     private LatestTradeDateService service;
 
     @BeforeEach
     void setUp() {
-        service = new LatestTradeDateService(marketSyncStateRepository, restTemplate, new ObjectMapper());
+        service = new LatestTradeDateService(marketSyncStateRepository, tradingCalendarService, restTemplate, new ObjectMapper());
         ReflectionTestUtils.setField(service, "tushareApiUrl", "http://api.tushare.pro");
         ReflectionTestUtils.setField(service, "tushareToken", "test-token");
+    }
+
+    @Test
+    void refreshLatestAshareTradeDate_shouldPreferManualTradingCalendarAndSaveTushareDate() {
+        when(tradingCalendarService.resolveLatestOpenDate()).thenReturn(Optional.of(LocalDate.parse("2026-05-06")));
+        when(marketSyncStateRepository.findById(LatestTradeDateService.A_SHARE_LATEST_TRADE_DATE_KEY))
+                .thenReturn(Optional.empty());
+
+        String tradeDate = service.refreshLatestAshareTradeDate();
+
+        assertEquals("20260506", tradeDate);
+        ArgumentCaptor<MarketSyncState> stateCaptor = ArgumentCaptor.forClass(MarketSyncState.class);
+        verify(marketSyncStateRepository).save(stateCaptor.capture());
+        MarketSyncState saved = stateCaptor.getValue();
+        assertEquals("20260506", saved.getStateValue());
+        assertEquals(LatestTradeDateService.MANUAL_TRADING_CALENDAR_SOURCE, saved.getSource());
     }
 
     @Test
@@ -65,12 +85,12 @@ class LatestTradeDateServiceTest {
     }
 
     @Test
-    void refreshLatestAshareTradeDate_shouldFetchFromTushareWhenEastMoneyFails() {
+    void refreshLatestAshareTradeDate_shouldFetchFromTushareDailyWhenEastMoneyFails() {
         when(restTemplate.exchange(any(URI.class), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
                 .thenThrow(new RestClientException("network down"));
         when(restTemplate.exchange(any(URI.class), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
                 .thenReturn(ResponseEntity.ok("""
-                        {"code":0,"msg":null,"data":{"fields":["cal_date"],"items":[
+                        {"code":0,"msg":null,"data":{"fields":["trade_date"],"items":[
                         ["20260428"],
                         ["20260429"],
                         ["20260430"]

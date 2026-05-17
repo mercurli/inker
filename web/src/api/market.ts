@@ -10,6 +10,10 @@ export interface DistributionBucket {
   tone: TrendTone
 }
 
+export interface SizedDistributionBucket extends DistributionBucket {
+  width: string
+}
+
 export interface MarketSummary {
   total: number
   rising: number
@@ -17,6 +21,8 @@ export interface MarketSummary {
   flat: number
   lastSyncedAt: string | null
   distribution: DistributionBucket[]
+  topFiveDayRisingIndustries: DistributionBucket[]
+  topFiveDayRisingConcepts: DistributionBucket[]
   strongest: {
     id: number
     symbol: string

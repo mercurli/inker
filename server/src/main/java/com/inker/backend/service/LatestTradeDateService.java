@@ -32,8 +32,9 @@ import java.util.Optional;
 public class LatestTradeDateService {
 
     static final String A_SHARE_LATEST_TRADE_DATE_KEY = "A_SHARE_LATEST_TRADE_DATE";
+    static final String MANUAL_TRADING_CALENDAR_SOURCE = "manual_trading_calendar";
     static final String EASTMONEY_SOURCE = "eastmoney_index_kline";
-    static final String TUSHARE_SOURCE = "tushare_trade_cal";
+    static final String TUSHARE_SOURCE = "tushare_daily_sample";
 
     private static final Logger log = LoggerFactory.getLogger(LatestTradeDateService.class);
     private static final String EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
@@ -42,6 +43,7 @@ public class LatestTradeDateService {
     private static final DateTimeFormatter TUSHARE_DATE_FORMATTER = DateTimeFormatter.BASIC_ISO_DATE;
 
     private final MarketSyncStateRepository marketSyncStateRepository;
+    private final TradingCalendarService tradingCalendarService;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
@@ -52,20 +54,36 @@ public class LatestTradeDateService {
     private String tushareToken;
 
     @Autowired
-    public LatestTradeDateService(MarketSyncStateRepository marketSyncStateRepository) {
-        this(marketSyncStateRepository, createRestTemplate(), new ObjectMapper());
+    public LatestTradeDateService(MarketSyncStateRepository marketSyncStateRepository,
+                                  TradingCalendarService tradingCalendarService) {
+        this(marketSyncStateRepository, tradingCalendarService, createRestTemplate(), new ObjectMapper());
     }
 
     LatestTradeDateService(MarketSyncStateRepository marketSyncStateRepository,
                            RestTemplate restTemplate,
                            ObjectMapper objectMapper) {
+        this(marketSyncStateRepository, null, restTemplate, objectMapper);
+    }
+
+    LatestTradeDateService(MarketSyncStateRepository marketSyncStateRepository,
+                           TradingCalendarService tradingCalendarService,
+                           RestTemplate restTemplate,
+                           ObjectMapper objectMapper) {
         this.marketSyncStateRepository = marketSyncStateRepository;
+        this.tradingCalendarService = tradingCalendarService;
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
     }
 
     @Transactional
     public String refreshLatestAshareTradeDate() {
+        Optional<String> manualTradeDate = resolveManualTradeDate();
+        if (manualTradeDate.isPresent()) {
+            String tradeDate = manualTradeDate.get();
+            saveLatestTradeDate(tradeDate, MANUAL_TRADING_CALENDAR_SOURCE);
+            return tradeDate;
+        }
+
         Optional<ResolvedTradeDate> onlineTradeDate = resolveFromOnlineSources();
         if (onlineTradeDate.isPresent()) {
             ResolvedTradeDate resolved = onlineTradeDate.get();
@@ -78,12 +96,22 @@ public class LatestTradeDateService {
                         "Failed to resolve latest A-share trade date from online sources and no cached value is available"));
     }
 
+    private Optional<String> resolveManualTradeDate() {
+        if (tradingCalendarService == null) {
+            return Optional.empty();
+        }
+        Optional<LocalDate> tradeDate = tradingCalendarService.resolveLatestOpenDate();
+        return tradeDate == null
+                ? Optional.empty()
+                : tradeDate.map(value -> value.format(TUSHARE_DATE_FORMATTER));
+    }
+
     private Optional<ResolvedTradeDate> resolveFromOnlineSources() {
         try {
             String tradeDate = fetchLatestTradeDateFromEastMoney();
             return Optional.of(new ResolvedTradeDate(tradeDate, EASTMONEY_SOURCE));
         } catch (Exception exception) {
-            log.warn("Failed to fetch latest A-share trade date from EastMoney. Trying Tushare trade calendar.", exception);
+            log.warn("Failed to fetch latest A-share trade date from EastMoney. Trying Tushare daily sample.", exception);
         }
 
         try {
@@ -151,25 +179,25 @@ public class LatestTradeDateService {
         String startDate = today.minusDays(14).format(TUSHARE_DATE_FORMATTER);
         String endDate = today.format(TUSHARE_DATE_FORMATTER);
         JsonNode data = callTushare(
-                "trade_cal",
-                Map.of("exchange", "SSE", "start_date", startDate, "end_date", endDate, "is_open", "1"),
-                "cal_date"
+                "daily",
+                Map.of("ts_code", "000001.SZ", "start_date", startDate, "end_date", endDate),
+                "trade_date"
         );
         JsonNode itemsNode = data.path("items");
         Map<String, Integer> fieldIndexMap = buildFieldIndexMap(data.path("fields"));
         if (!itemsNode.isArray() || itemsNode.isEmpty()) {
-            throw new IllegalStateException("Tushare trade_cal API returned empty open trade date data");
+            throw new IllegalStateException("Tushare daily API returned empty sample trade date data");
         }
 
         String latestTradeDate = null;
         for (JsonNode item : itemsNode) {
-            String calDate = readText(item, fieldIndexMap, "cal_date");
-            if (isValidTushareDate(calDate) && (latestTradeDate == null || calDate.compareTo(latestTradeDate) > 0)) {
-                latestTradeDate = calDate;
+            String tradeDate = readText(item, fieldIndexMap, "trade_date");
+            if (isValidTushareDate(tradeDate) && (latestTradeDate == null || tradeDate.compareTo(latestTradeDate) > 0)) {
+                latestTradeDate = tradeDate;
             }
         }
         if (latestTradeDate == null) {
-            throw new IllegalStateException("Tushare trade_cal API response contains no valid open trade date");
+            throw new IllegalStateException("Tushare daily API response contains no valid sample trade date");
         }
         return latestTradeDate;
     }

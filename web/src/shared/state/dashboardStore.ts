@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { marketApi, type DistributionBucket, type MarketSummary } from '@/api/market'
+import { marketApi, type DistributionBucket, type MarketSummary, type SizedDistributionBucket } from '@/api/market'
 import {
   stockApi,
   type QuoteSyncProgress,
@@ -67,6 +67,8 @@ const marketSummary = ref<MarketSummary>({
   flat: 0,
   lastSyncedAt: null,
   distribution: [],
+  topFiveDayRisingIndustries: [],
+  topFiveDayRisingConcepts: [],
   strongest: null
 })
 
@@ -143,14 +145,25 @@ const strongestStockLabel = computed(() => {
   return `${strongest.name} ${formatPercent(strongest.changePercent)}`
 })
 
-const priceChangeDistribution = computed(() => {
-  const distribution: DistributionBucket[] = marketSummary.value.distribution ?? []
+function withRelativeWidth(distribution: DistributionBucket[]): SizedDistributionBucket[] {
   const maxCount = Math.max(...distribution.map((item) => item.count), 0)
 
   return distribution.map((item) => ({
     ...item,
     width: maxCount === 0 ? '0%' : `${(item.count / maxCount) * 100}%`
   }))
+}
+
+const priceChangeDistribution = computed(() => {
+  return withRelativeWidth(marketSummary.value.distribution ?? [])
+})
+
+const topFiveDayRisingIndustries = computed(() => {
+  return withRelativeWidth(marketSummary.value.topFiveDayRisingIndustries ?? [])
+})
+
+const topFiveDayRisingConcepts = computed(() => {
+  return withRelativeWidth(marketSummary.value.topFiveDayRisingConcepts ?? [])
 })
 
 function normalizeStock(stock: Stock): Stock {
@@ -513,6 +526,8 @@ async function fetchMarketSummary() {
       flat: 0,
       lastSyncedAt: null,
       distribution: [],
+      topFiveDayRisingIndustries: [],
+      topFiveDayRisingConcepts: [],
       strongest: null
     }
   }
@@ -863,6 +878,8 @@ export function useDashboardStore() {
     suggestedConcepts,
     conceptOptions,
     priceChangeDistribution,
+    topFiveDayRisingIndustries,
+    topFiveDayRisingConcepts,
     importStocks,
     syncQuotesWithProgress,
     onSearch,

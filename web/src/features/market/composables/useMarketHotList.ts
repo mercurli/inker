@@ -2,6 +2,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { marketApi, type HotListRawItem } from '@/api/market'
 import { stockApi } from '@/api/stock'
+import { resolveStockDetailHref } from '@/shared/lib/navigation'
 
 const HOT_LIST_LIMIT = 20
 const HIGH_PRIORITY_RATE_THRESHOLD = 1200000
@@ -196,6 +197,10 @@ export function useMarketHotList() {
 
     notFoundMessage.value = ''
     resolvingCode.value = normalizedCode
+    const detailWindow = window.open('', '_blank')
+    if (detailWindow) {
+      detailWindow.opener = null
+    }
 
     try {
       const response = await stockApi.getStocks({
@@ -209,12 +214,21 @@ export function useMarketHotList() {
       const exactMatchedStock = response.data.content.find((stock) => stock.symbol === normalizedCode)
 
       if (exactMatchedStock) {
-        await router.push(`/stocks/${exactMatchedStock.id}`)
+        const detailHref = resolveStockDetailHref(router, exactMatchedStock.id)
+
+        if (detailWindow && !detailWindow.closed) {
+          detailWindow.location.href = detailHref
+        } else {
+          window.open(detailHref, '_blank', 'noopener,noreferrer')
+        }
+
         return
       }
 
+      detailWindow?.close()
       notFoundMessage.value = `${normalizedCode} 暂未收录，无法跳转详情。`
     } catch {
+      detailWindow?.close()
       notFoundMessage.value = '跳转详情失败，请稍后重试。'
     } finally {
       resolvingCode.value = ''

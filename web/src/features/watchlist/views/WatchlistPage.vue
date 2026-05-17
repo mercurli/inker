@@ -9,6 +9,7 @@ import ConceptChipGroup from '@/shared/components/display/ConceptChipGroup.vue'
 import BoardTag from '@/shared/components/display/BoardTag.vue'
 import EmptyState from '@/shared/components/feedback/EmptyState.vue'
 import { resolveApiAssetUrl, type Stock } from '@/api/stock'
+import { openStockDetailPage } from '@/shared/lib/navigation'
 
 type WatchlistSortDirection = 'asc' | 'desc'
 type WatchlistSortField = 'latestPrice' | 'changePercent' | 'industry'
@@ -78,7 +79,7 @@ watch(
 )
 
 function openDetail(stockId: number) {
-  void router.push(`/stocks/${stockId}`)
+  openStockDetailPage(router, stockId)
 }
 
 function logoUrl(stock: Stock) {

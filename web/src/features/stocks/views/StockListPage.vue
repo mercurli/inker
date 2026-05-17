@@ -13,6 +13,7 @@ import WatchlistToggleButton from '@/shared/components/interaction/WatchlistTogg
 import LoadingState from '@/shared/components/feedback/LoadingState.vue'
 import EmptyState from '@/shared/components/feedback/EmptyState.vue'
 import { resolveApiAssetUrl, type Stock, type StockQueryParams } from '@/api/stock'
+import { openStockDetailPage } from '@/shared/lib/navigation'
 
 const router = useRouter()
 const route = useRoute()
@@ -47,7 +48,7 @@ watch(
 )
 
 function openDetail(stock: Stock) {
-  void router.push(`/stocks/${stock.id}`)
+  openStockDetailPage(router, stock.id)
 }
 
 function onSort(field: StockQueryParams['sortBy']) {

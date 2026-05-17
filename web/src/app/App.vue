@@ -13,12 +13,14 @@ const store = useDashboardStore()
 const navItems = [
   { key: 'market', label: '市场', to: '/market' },
   { key: 'stocks', label: '选股', to: '/stocks' },
-  { key: 'watchlist', label: '自选', to: '/watchlist' }
+  { key: 'watchlist', label: '自选', to: '/watchlist' },
+  { key: 'trading-calendar', label: '日历', to: '/trading-calendar' }
 ]
 
 const activeKey = computed(() => String(route.meta.navKey ?? 'market'))
 const pageTitle = computed(() => String(route.meta.title ?? '研墨'))
 const pageDescription = computed(() => String(route.meta.description ?? ''))
+const isStandaloneLayout = computed(() => route.meta.layout === 'standalone')
 
 onMounted(() => {
   void store.init()
@@ -34,7 +36,11 @@ function navigate(to: string) {
 </script>
 
 <template>
-  <div class="app-shell">
+  <main v-if="isStandaloneLayout" class="standalone-page-shell">
+    <RouterView />
+  </main>
+
+  <div v-else class="app-shell">
     <div class="dashboard-frame">
       <AppSidebar :items="navItems" :active-key="activeKey" @navigate="navigate" />
 

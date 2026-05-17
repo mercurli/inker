@@ -91,6 +91,7 @@ class StockControllerSseTest {
                 .andExpect(request().asyncStarted())
                 .andReturn();
 
+        mvcResult.getAsyncResult(1_000);
         mockMvc.perform(asyncDispatch(mvcResult))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))
@@ -110,6 +111,7 @@ class StockControllerSseTest {
                 .andExpect(request().asyncStarted())
                 .andReturn();
 
+        mvcResult.getAsyncResult(1_000);
         mockMvc.perform(asyncDispatch(mvcResult))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM))

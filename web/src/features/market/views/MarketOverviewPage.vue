@@ -10,7 +10,7 @@ import EmptyState from '@/shared/components/feedback/EmptyState.vue'
 import { formatPercent, toneByPercent } from '@/shared/lib/formatters'
 import type { TrendTone } from '@/shared/types/common'
 
-const { marketSummary, priceChangeDistribution } = useMarketSummary()
+const { marketSummary, priceChangeDistribution, topFiveDayRisingIndustries, topFiveDayRisingConcepts } = useMarketSummary()
 const {
   loading: hotListLoading,
   error: hotListError,
@@ -74,6 +74,48 @@ function formatRateWan(value: number | null) {
             </div>
           </div>
         </PanelCard>
+
+        <div class="strength-chart-grid">
+          <PanelCard>
+            <SectionHeader eyebrow="5-Day Strength" title="5日强势行业" />
+
+            <EmptyState
+              v-if="topFiveDayRisingIndustries.length === 0"
+              message="暂无近5日涨幅超过 5% 的行业数据。"
+            />
+            <div v-else class="strength-chart">
+              <div v-for="item in topFiveDayRisingIndustries" :key="item.label" class="strength-row">
+                <div class="strength-row-meta">
+                  <span class="strength-row-label" :title="item.label">{{ item.label }}</span>
+                  <span class="strength-row-count">{{ item.count }}</span>
+                </div>
+                <div class="strength-row-track">
+                  <div class="strength-row-fill" :style="{ width: item.width }"></div>
+                </div>
+              </div>
+            </div>
+          </PanelCard>
+
+          <PanelCard>
+            <SectionHeader eyebrow="5-Day Strength" title="5日强势概念" />
+
+            <EmptyState
+              v-if="topFiveDayRisingConcepts.length === 0"
+              message="暂无近5日涨幅超过 5% 的概念数据。"
+            />
+            <div v-else class="strength-chart">
+              <div v-for="item in topFiveDayRisingConcepts" :key="item.label" class="strength-row">
+                <div class="strength-row-meta">
+                  <span class="strength-row-label" :title="item.label">{{ item.label }}</span>
+                  <span class="strength-row-count">{{ item.count }}</span>
+                </div>
+                <div class="strength-row-track">
+                  <div class="strength-row-fill" :style="{ width: item.width }"></div>
+                </div>
+              </div>
+            </div>
+          </PanelCard>
+        </div>
       </div>
 
       <PanelCard class="hotlist-panel">
@@ -171,6 +213,70 @@ function formatRateWan(value: number | null) {
 
 .market-overview-main {
   min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.market-strip {
+  margin-bottom: 0;
+}
+
+.strength-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.strength-chart {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.strength-row {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.strength-row-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.strength-row-label {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.strength-row-count {
+  min-width: 28px;
+  color: var(--up-500);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  text-align: right;
+}
+
+.strength-row-track {
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-soft);
+  overflow: hidden;
+}
+
+.strength-row-fill {
+  height: 100%;
+  min-width: var(--space-2);
+  border-radius: inherit;
+  background: linear-gradient(90deg, #fca5a5 0%, var(--up-500) 100%);
+  transition: width var(--transition-fast);
 }
 
 .hotlist-panel {
@@ -340,6 +446,7 @@ function formatRateWan(value: number | null) {
   display: flex;
   align-items: baseline;
   gap: var(--space-1);
+  margin-bottom: var(--space-1);
 }
 
 .hotlist-item-tags {
@@ -401,6 +508,10 @@ function formatRateWan(value: number | null) {
 
 @media (max-width: 1199px) {
   .market-overview-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .strength-chart-grid {
     grid-template-columns: 1fr;
   }
 

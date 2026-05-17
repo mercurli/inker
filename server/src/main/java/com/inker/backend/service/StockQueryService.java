@@ -13,10 +13,15 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class StockQueryService {
@@ -28,6 +33,10 @@ public class StockQueryService {
             "totalMarketValue",
             "dynamicPeRatio"
     );
+    private static final double FIVE_DAY_RISING_THRESHOLD = 5D;
+    private static final int TOP_FIVE_DAY_RISING_GROUP_LIMIT = 5;
+    private static final String UNCLASSIFIED_INDUSTRY_LABEL = "未分类行业";
+    private static final String EMPTY_CONCEPT_LABEL = "暂无概念";
 
     private final StockRepository stockRepository;
 
@@ -121,7 +130,47 @@ public class StockQueryService {
                 .lastSyncedAt(lastSyncedAt)
                 .strongest(strongest)
                 .distribution(buildDistribution())
+                .topFiveDayRisingIndustries(buildTopFiveDayRisingGroups(this::industryLabel))
+                .topFiveDayRisingConcepts(buildTopFiveDayRisingGroups(this::primaryConceptLabel))
                 .build();
+    }
+
+    private List<MarketSummaryDto.DistributionBucketDto> buildTopFiveDayRisingGroups(Function<Stock, String> labelMapper) {
+        Map<String, Long> counts = stockRepository.findAll().stream()
+                .filter(stock -> stock.getFiveDayChangePercent() != null)
+                .filter(stock -> stock.getFiveDayChangePercent() > FIVE_DAY_RISING_THRESHOLD)
+                .collect(Collectors.groupingBy(labelMapper, LinkedHashMap::new, Collectors.counting()));
+
+        return counts.entrySet().stream()
+                .sorted(
+                        Comparator.<Map.Entry<String, Long>>comparingLong(entry -> entry.getValue())
+                                .reversed()
+                                .thenComparing(Map.Entry::getKey)
+                )
+                .limit(TOP_FIVE_DAY_RISING_GROUP_LIMIT)
+                .map(entry -> MarketSummaryDto.DistributionBucketDto.builder()
+                        .label(entry.getKey())
+                        .count(entry.getValue())
+                        .tone("up")
+                        .build())
+                .toList();
+    }
+
+    private String industryLabel(Stock stock) {
+        String industry = normalize(stock.getIndustry());
+        return industry == null ? UNCLASSIFIED_INDUSTRY_LABEL : industry;
+    }
+
+    private String primaryConceptLabel(Stock stock) {
+        if (stock.getConcepts() == null) {
+            return EMPTY_CONCEPT_LABEL;
+        }
+
+        return stock.getConcepts().stream()
+                .map(this::normalize)
+                .filter(concept -> concept != null)
+                .findFirst()
+                .orElse(EMPTY_CONCEPT_LABEL);
     }
 
     private List<MarketSummaryDto.DistributionBucketDto> buildDistribution() {
